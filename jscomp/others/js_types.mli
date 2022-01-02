@@ -28,6 +28,9 @@
 type symbol
 (** Js symbol type only available in ES6 *)
 
+type bigint_val
+(** Js bigint type only available in ES2020 *)
+
 type obj_val
 type undefined_val
 (** This type has only one value `undefined` *)
@@ -46,6 +49,7 @@ type _ t =
   | Function : function_val t
   | Object : obj_val t
   | Symbol : symbol t
+  | BigInt : bigint_val t
 
 
 val test : 'a -> 'b t -> bool
@@ -66,6 +70,7 @@ type tagged_t =
   | JSFunction of function_val
   | JSObject of obj_val
   | JSSymbol of symbol
+  | JSBigInt of bigint_val
 
 
 val classify : 'a -> tagged_t
