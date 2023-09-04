@@ -3,19 +3,19 @@ let ( // ) = Ext_path.combine
 let ( |? ) m (key, cb) = m |> Ext_json.test key cb
 let ( .?() ) = Map_string.find_opt
 
-let load_json ~(per_proj_dir : string) ~(warn_legacy_manifest : bool) : string * string * Ext_json_types.t =
-  let filename, absolute_path, in_chan =
+let load_json ~(per_proj_dir : string) ~(warn_legacy_manifest : bool) : string * Ext_json_types.t =
+  let filename, in_chan =
     let filename = Literals.rescript_json in
     let absolute_path = (per_proj_dir // filename) in
     match open_in absolute_path
     with
-    | in_chan -> (filename, absolute_path, in_chan)
+    | in_chan -> (filename, in_chan)
     | exception e ->
       let filename = Literals.bsconfig_json in
       let absolute_path = (per_proj_dir // filename) in
       match open_in absolute_path
       with
-      | in_chan -> (filename, absolute_path, in_chan)
+      | in_chan -> (filename, in_chan)
       | exception _ -> raise e (* forward error from rescript.json *)
   in
   if warn_legacy_manifest && filename = Literals.bsconfig_json then
@@ -23,10 +23,10 @@ let load_json ~(per_proj_dir : string) ~(warn_legacy_manifest : bool) : string *
   match
     Ext_json_parse.parse_json_from_chan filename in_chan
   with
-  | v -> close_in in_chan ; (filename, absolute_path, v)
+  | v -> close_in in_chan ; (filename, v)
   | exception e -> close_in in_chan ; raise e
 
-let from_json (json : Ext_json_types.t) ~(filename : string)  : Bsb_manifest_types.t =
+let from_json (json : Ext_json_types.t) ~(filename : string) : Bsb_manifest_types.t =
   match json with
   | Obj { map } -> (
     let open Bsb_manifest_fields in
@@ -34,6 +34,7 @@ let from_json (json : Ext_json_types.t) ~(filename : string)  : Bsb_manifest_typ
     let suffix = extract_suffix map in
     let package_specs = extract_package_specs map ~suffix in
     {
+      _raw = map;
       package_name;
       namespace;
       suffix;
@@ -60,3 +61,8 @@ let from_json (json : Ext_json_types.t) ~(filename : string)  : Bsb_manifest_typ
     }
   )
   | _ -> Bsb_exception.invalid_spec (filename ^ " expect a json object {}")
+
+let load ~(per_proj_dir : string) ~(warn_legacy_manifest : bool) : string * Bsb_manifest_types.t =
+  let filename, json = load_json ~per_proj_dir ~warn_legacy_manifest in
+  let manifest = from_json json ~filename in
+  (filename, manifest)

@@ -27,10 +27,6 @@ type t = Bsb_manifest_types.Warning.t option
 val to_merlin_string : t -> string
 (** Extra work is need to make merlin happy *)
 
-val from_map : Ext_json_types.t Map_string.t -> t
-
 val to_bsb_string : package_kind:Bsb_package_kind.t -> t -> string
 (** [to_bsb_string not_dev warning]
 *)
-
-val use_default : t

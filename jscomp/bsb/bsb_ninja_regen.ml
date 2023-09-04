@@ -30,7 +30,7 @@ let ( // ) = Ext_path.combine
     return None if we dont need regenerate
     otherwise return Some info
 *)
-let regenerate_ninja ~(package_kind : Bsb_package_kind.t) ~forced ~per_proj_dir ~warn_legacy_config
+let regenerate_ninja ~(package_kind : Bsb_package_kind.t) ~forced ~per_proj_dir ~warn_legacy_manifest
     : Bsb_config_types.t option =
   let lib_artifacts_dir = Bsb_config.lib_bs in
   let lib_bs_dir = per_proj_dir // lib_artifacts_dir in
@@ -51,12 +51,11 @@ let regenerate_ninja ~(package_kind : Bsb_package_kind.t) ~forced ~per_proj_dir 
         Bsb_clean.clean_bs_deps per_proj_dir;
         Bsb_clean.clean_self per_proj_dir);
 
-      let config : Bsb_config_types.t =
-        Bsb_config_interpret.interpret_json ~package_kind ~per_proj_dir ~warn_legacy_config
-      in
+      let manifest_filename, manifest = Bsb_manifest.load ~per_proj_dir ~warn_legacy_manifest in
+      let config = Bsb_config.from_manifest ~package_kind ~per_proj_dir ~manifest_filename in
       (* create directory, lib/bs, lib/js, lib/es6 etc *)
       Bsb_build_util.mkp lib_bs_dir;
-      Bsb_package_specs.list_dirs_by config.package_specs (fun x ->
+      Bsb_package_specs.list_dirs_by manifest.package_specs (fun x ->
           let dir = per_proj_dir // x in
           (*Unix.EEXIST error*)
           if not (Sys.file_exists dir) then Unix.mkdir dir 0o777);
@@ -75,5 +74,5 @@ let regenerate_ninja ~(package_kind : Bsb_package_kind.t) ~forced ~per_proj_dir 
           since it may add files in the future *)
       Bsb_ninja_check.record ~package_kind ~per_proj_dir ~config
         ~file:output_deps
-        (config.filename :: config.file_groups.globbed_dirs);
+        (filename :: config.file_groups.globbed_dirs);
       Some config

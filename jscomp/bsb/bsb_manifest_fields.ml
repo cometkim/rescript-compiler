@@ -152,15 +152,15 @@ let extract_sources (map : json_map) =
         | Some Obj { map } ->
           let regex =
             match map.?(Bsb_build_schemas.slow_re) with
-            | Some Str { str } -> Str.regexp str
+            | None -> None
+            | Some Str { str } -> Some (Str.regexp str)
             | Some field -> Bsb_exception.manifest_error field "slow-re expects a string"
-            | None -> Bsb_exception.invalid_spec "slow-re is required for files object"
           in
           let excludes =
             match map.?(Bsb_build_schemas.excludes) with
+            | None -> []
             | Some Arr { content } -> get_list_string content
             | Some field -> Bsb_exception.manifest_error field "excludes expects an array of string"
-            | None -> []
           in
           Files_predicate { regex; excludes }
         | Some field -> Bsb_exception.manifest_error field "files field expects an array of string or a object"
@@ -215,6 +215,7 @@ let extract_sources (map : json_map) =
       let public =
         match map.?(Bsb_build_schemas.public) with
         | None | Some Str { str = "all" } -> Export_all
+        | Some Str { str = "none" } -> Export_none
         | Some Arr { content } -> Export_set (Set_string.of_list (get_list_string content))
         | Some field -> Bsb_exception.manifest_error field ""
       in

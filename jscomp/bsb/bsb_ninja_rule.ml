@@ -87,13 +87,14 @@ type builtin = {
   customs : t Map_string.t;
 }
 
-let make_custom_rules ~(gentype_config : Bsb_config_types.gentype_config)
+(* TODO: cleanup args using a single `Bsb_manifest_types.t` *)
+let make_custom_rules ~(gentype_config : Bsb_manifest_types.Gentype.t option)
     ~(has_postbuild : string option) ~(pp_file : string option)
     ~(has_builtin : bool)
-    ~(reason_react_jsx : Bsb_config_types.reason_react_jsx option)
-    ~(jsx : Bsb_jsx.t) ~(uncurried: bool)  ~(digest : string) ~(package_specs : Bsb_package_specs.t)
+    ~(reason_react : Bsb_manifest_types.ReasonReact.t option)
+    ~(jsx : Bsb_manifest_types.Jsx.t) ~(uncurried: bool)  ~(digest : string) ~(package_specs : Bsb_package_specs.t)
     ~(namespace : string option) ~package_name ~warnings
-    ~(ppx_files : Bsb_config_types.ppx list) ~bsc_flags ~(dpkg_incls : string)
+    ~(ppx_files : Bsb_manifest_types.ppx_spec list) ~bsc_flags ~(dpkg_incls : string)
     ~(lib_incls : string) ~(dev_incls : string) ~bs_dependencies
     ~bs_dev_dependencies (custom_rules : command Map_string.t) : builtin =
   let bs_dep = Ext_filename.maybe_quote Bsb_global_paths.vendor_bsdep in
@@ -121,8 +122,8 @@ let make_custom_rules ~(gentype_config : Bsb_config_types.gentype_config)
        in non-toplevel mode
     *)
     (match gentype_config with
-    | false -> ()
-    | true -> Ext_buffer.add_string buf " -bs-gentype");
+    | None -> ()
+    | Some _ -> Ext_buffer.add_string buf " -bs-gentype");
     add_uncurried_flag uncurried;
     if read_cmi <> `is_cmi then (
       Ext_buffer.add_string buf " -bs-package-name ";
@@ -162,10 +163,10 @@ let make_custom_rules ~(gentype_config : Bsb_config_types.gentype_config)
     | None -> ()
     | Some flag ->
         Ext_buffer.add_char_string buf ' ' (Bsb_build_util.pp_flag flag));
-    (match (reason_react_jsx, jsx.version) with
+    (match (reason_react, jsx.version) with
     | _, Some Jsx_v3 -> Ext_buffer.add_string buf " -bs-jsx 3"
     | _, Some Jsx_v4 -> Ext_buffer.add_string buf " -bs-jsx 4"
-    | Some Jsx_v3, None -> Ext_buffer.add_string buf " -bs-jsx 3"
+    | Some ({ react_jsx = Jsx_v3 }), None -> Ext_buffer.add_string buf " -bs-jsx 3"
     | None, None -> ());
     (match jsx.module_ with
     | None -> ()

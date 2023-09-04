@@ -1,11 +1,14 @@
 module SourceItem = struct
   type type_ = Dev
-  type public = Export_all | Export_set of Set_string.t
+  type public =
+    | Export_none
+    | Export_all
+    | Export_set of Set_string.t
 
   type source =
     | Files_auto
     | Files_set of Set_string.t
-    | Files_predicate of { regex : Str.regexp; excludes : string list }
+    | Files_predicate of { regex : Str.regexp option; excludes : string list }
 
   type build_generator = {
     name : string;
@@ -13,7 +16,10 @@ module SourceItem = struct
     output : string list;
   }
 
-  type subdirs = Recursive_none | Recursive_all | Recursive_source of t
+  type subdirs =
+    | Recursive_none
+    | Recursive_all
+    | Recursive_source of t
   and t = {
     dir : string;
     type_ : type_ option;
@@ -34,9 +40,6 @@ module SourceItem = struct
       resources = [];
       subdirs = None;
     }
-
-  let from_string_array dirs =
-    Ext_list.map dirs from_string
 end
 
 type package_spec = {
@@ -105,6 +108,7 @@ module Gentype = struct
 end
 
 type t = {
+  _raw : Ext_json_types.t Map_string.t;
   package_name : string;
   namespace : string option;
   external_includes : string list;

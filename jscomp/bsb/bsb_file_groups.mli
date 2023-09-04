@@ -22,13 +22,9 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA. *)
 
-type public = Export_none | Export_all | Export_set of Set_string.t
+type public = Bsb_manifest_types.SourceItem.public
 
-type build_generator = {
-  input : string list;
-  output : string list;
-  command : string;
-}
+type build_generator = Bsb_manifest_types.SourceItem.build_generator
 
 type file_group = {
   dir : string;

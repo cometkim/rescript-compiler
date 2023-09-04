@@ -105,8 +105,8 @@ let record ~(package_kind : Bsb_package_kind.t) ~per_proj_dir ~file
         '\n');
   Ext_buffer.add_string buf "===\n";
   record_global_atime buf Sys.executable_name;
-  Ext_list.iter config.ppx_files (fun { name; args = _ } ->
-      try record_global_atime buf name
+  Ext_list.iter config.ppx_files (fun { resolved_path; _ } ->
+      try record_global_atime buf resolved_path
       with _ -> (* record the ppx files as a best effort *)
                 ());
   let oc = open_out_bin file in

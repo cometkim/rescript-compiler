@@ -66,19 +66,19 @@ type command = string
     we must make sure it is re-entrant
 *)
 val make_custom_rules :
-  gentype_config:Bsb_config_types.gentype_config ->
+  gentype_config:Bsb_manifest_types.Gentype.t option ->
   has_postbuild:string option ->
   pp_file:string option ->
   has_builtin:bool ->
-  reason_react_jsx:Bsb_config_types.reason_react_jsx option ->
-  jsx:Bsb_jsx.t ->
+  reason_react:Bsb_manifest_types.ReasonReact.t option ->
+  jsx:Bsb_manifest_types.Jsx.t ->
   uncurried:bool ->
   digest:string ->
   package_specs:Bsb_package_specs.t ->
   namespace:string option ->
   package_name:string ->
   warnings:string ->
-  ppx_files:Bsb_config_types.ppx list ->
+  ppx_files:Bsb_manifest_types.ppx_spec list ->
   bsc_flags:string ->
   dpkg_incls:string ->
   lib_incls:string ->

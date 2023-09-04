@@ -30,7 +30,7 @@ val flag_concat : string -> string list -> string
    ]}
 *)
 
-val ppx_flags : Bsb_config_types.ppx list -> string
+val ppx_flags : Bsb_manifest_types.ppx_spec list -> string
 (**
    Build quoted commandline arguments for bsc.exe for the given ppx flags
 

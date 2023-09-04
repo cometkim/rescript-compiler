@@ -22,13 +22,11 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA. *)
 
-type build_generator = Bsb_file_groups.build_generator
-
-let ( .?() ) = Map_string.find_opt
-
-(* type file_group = Bsb_file_groups.file_group *)
-
 type t = Bsb_file_groups.t
+
+type source = Bsb_manifest_types.SourceItem.t
+
+type build_generator = Bsb_manifest_types.SourceItem.build_generator
 
 let is_input_or_output (xs : build_generator list) (x : string) =
   Ext_list.exists xs (fun { input; output } ->
@@ -44,115 +42,17 @@ type cxt = {
   root : string;
   cut_generators : bool;
   traverse : bool;
-  (* namespace : string option; *)
   ignored_dirs : Set_string.t;
 }
 
-(** [public] has a list of modules, we do a sanity check to see if all the listed 
+(** [public] has a set of modules, we do a sanity check to see if all the listed 
     modules are indeed valid module components
 *)
-let collect_pub_modules (xs : Ext_json_types.t array) (cache : Bsb_db.map) :
-    Set_string.t =
-  let set = ref Set_string.empty in
-  for i = 0 to Array.length xs - 1 do
-    let v = Array.unsafe_get xs i in
-    match v with
-    | Str { str; loc } ->
-        if Map_string.mem cache str then set := Set_string.add !set str
-        else
-          Bsb_exception.errorf ~loc "%S in public is not an existing module" str
-    | _ ->
-        Bsb_exception.errorf ~loc:(Ext_json.loc_of v)
-          "public expects a list of strings"
-  done;
-  !set
-
-let extract_pub (input : Ext_json_types.t Map_string.t)
-    (cur_sources : Bsb_db.map) : Bsb_file_groups.public =
-  match input.?(Bsb_build_schemas.public) with
-  | Some (Str { str = s } as x) ->
-      if s = Bsb_build_schemas.export_all then Export_all
-      else if s = Bsb_build_schemas.export_none then Export_none
-      else errorf x "invalid str for %s " s
-  | Some (Arr { content }) ->
-      Export_set (collect_pub_modules content cur_sources)
-  | Some x -> Bsb_exception.manifest_error x "expect array or string"
-  | None -> Export_all
-
-let extract_resources (input : Ext_json_types.t Map_string.t) : string list =
-  match input.?(Bsb_build_schemas.resources) with
-  | Some (Arr x) -> Bsb_build_util.get_list_string x.content
-  | Some x -> Bsb_exception.manifest_error x "expect array "
-  | None -> []
-
-let extract_input_output (edge : Ext_json_types.t) : string list * string list =
-  let error () =
-    errorf edge {| invalid edge format, expect  ["output" , ":", "input" ]|}
-  in
-  match edge with
-  | Arr { content } -> (
-      match
-        Ext_array.find_and_split content
-          (fun x () -> match x with Str { str = ":" } -> true | _ -> false)
-          ()
-      with
-      | No_split -> error ()
-      | Split (output, input) ->
-          ( Ext_array.to_list_map output (fun x ->
-                match x with
-                | Str { str = ":" } -> error ()
-                | Str { str } -> Some str
-                | _ -> None),
-            Ext_array.to_list_map input (fun x ->
-                match x with
-                | Str { str = ":" } -> error ()
-                | Str { str } ->
-                    Some str
-                    (* More rigirous error checking: It would trigger a ninja syntax error *)
-                | _ -> None) ))
-  | _ -> error ()
-
-type json_map = Ext_json_types.t Map_string.t
-
-let extract_generators (input : json_map) : build_generator list =
-  match input.?(Bsb_build_schemas.generators) with
-  | Some (Arr { content; loc_start = _ }) ->
-      (* Need check is dev build or not *)
-      Ext_array.fold_left content [] (fun acc x ->
-          match x with
-          | Obj { map } -> (
-              match
-                (map.?(Bsb_build_schemas.name), map.?(Bsb_build_schemas.edge))
-              with
-              | Some (Str command), Some edge ->
-                  let output, input = extract_input_output edge in
-                  { Bsb_file_groups.input; output; command = command.str }
-                  :: acc
-              | _ -> errorf x "Invalid generator format")
-          | _ -> errorf x "Invalid generator format")
-  | Some x -> errorf x "Invalid generator format"
-  | None -> []
-
-let extract_predicate (m : json_map) : string -> bool =
-  let excludes =
-    match m.?(Bsb_build_schemas.excludes) with
-    | None -> []
-    | Some (Arr { content = arr }) -> Bsb_build_util.get_list_string arr
-    | Some x -> Bsb_exception.manifest_error x "excludes expect array "
-  in
-  let slow_re = m.?(Bsb_build_schemas.slow_re) in
-  match (slow_re, excludes) with
-  | Some (Str { str = s }), [] ->
-      let re = Str.regexp s in
-      fun name -> Str.string_match re name 0
-  | Some (Str { str = s }), _ :: _ ->
-      let re = Str.regexp s in
-      fun name ->
-        Str.string_match re name 0 && not (Ext_list.mem_string excludes name)
-  | Some x, _ ->
-      Bsb_exception.manifest_error x
-        (Bsb_build_schemas.slow_re ^ " expect a string literal")
-  | None, _ -> fun name -> not (Ext_list.mem_string excludes name)
+let validate_pub_modules (modules : Set_string.t) (cache : Bsb_db.map) =
+  Set_string.iter modules (fun name ->
+    if not (Map_string.mem cache name) then
+      Bsb_exception.invalid_spec (name ^ " in public is not an existing module")
+  )
 
 (** [parsing_source_dir_map cxt input]
     Major work done in this function, 
@@ -167,7 +67,7 @@ let extract_predicate (m : json_map) : string -> bool =
 (********************************************************************)
 (* starts parsing *)
 let rec parsing_source_dir_map ({ cwd = dir } as cxt)
-    (input : Ext_json_types.t Map_string.t) : Bsb_file_groups.t =
+    (input: source) : Bsb_file_groups.t =
   if Set_string.mem cxt.ignored_dirs dir then Bsb_file_groups.empty
   else
     let cur_globbed_dirs = ref false in
@@ -182,9 +82,8 @@ let rec parsing_source_dir_map ({ cwd = dir } as cxt)
       | { cut_generators = true; _ } ->
           false
     in
-    let scanned_generators = extract_generators input in
-    let sub_dirs_field = input.?(Bsb_build_schemas.subdirs) in
-    let base_name_array =
+    let scanned_generators = input.generators in
+    let basename_array =
       lazy
         (cur_globbed_dirs := true;
          Sys.readdir (Filename.concat cxt.root dir))
@@ -196,43 +95,46 @@ let rec parsing_source_dir_map ({ cwd = dir } as cxt)
         (fun acc o -> Bsb_db_util.add_basename ~dir acc o)
     in
     let sources =
-      match input.?(Bsb_build_schemas.files) with
-      | None ->
+      match input.files with
+      | Files_auto ->
           (* We should avoid temporary files *)
-          Ext_array.fold_left (Lazy.force base_name_array) output_sources
+          Ext_array.fold_left (Lazy.force basename_array) output_sources
             (fun acc basename ->
               if is_input_or_output scanned_generators basename then acc
               else Bsb_db_util.add_basename ~dir acc basename)
-      | Some (Arr basenames) ->
-          Ext_array.fold_left basenames.content output_sources
+      | Files_set basenames ->
+          let basename_array = Array.of_list (Set_string.elements basenames) in
+          Ext_array.fold_left basename_array output_sources
             (fun acc basename ->
-              match basename with
-              | Str { str = basename; loc } ->
-                  Bsb_db_util.add_basename ~dir acc basename
-                    ~error_on_invalid_suffix:loc
-              | _ -> acc)
-      | Some (Obj { map; loc = _ }) ->
-          (* { excludes : [], slow_re : "" }*)
-          let predicate = extract_predicate map in
-          Ext_array.fold_left (Lazy.force base_name_array) output_sources
+              Bsb_db_util.add_basename ~dir acc basename
+            )
+      | Files_predicate { regex; excludes } ->
+          let predicate =
+            match (regex, excludes) with
+            | Some re, [] -> fun name -> Str.string_match re name 0
+            | Some re, excludes -> fun name -> Str.string_match re name 0 && not (Ext_list.mem_string excludes name)
+            | None, excludes -> fun name -> not (Ext_list.mem_string excludes name)
+          in
+          Ext_array.fold_left (Lazy.force basename_array) output_sources
             (fun acc basename ->
               if
                 is_input_or_output scanned_generators basename
                 || not (predicate basename)
               then acc
               else Bsb_db_util.add_basename ~dir acc basename)
-      | Some x ->
-          Bsb_exception.manifest_error x "files field expect array or object "
     in
-    let resources = extract_resources input in
-    let public = extract_pub input sources in
+    let () =
+      match input.public with
+      | Export_set modules -> validate_pub_modules modules sources
+      | _ -> ()
+    in
     (* Doing recursive stuff *)
     let children =
-      match (sub_dirs_field, cxt.traverse) with
-      | None, true | Some (True _), _ ->
+      match (input.subdirs, cxt.traverse) with
+      | None, true | Some Recursive_all, _ ->
           let root = cxt.root in
           let parent = Filename.concat root dir in
-          Ext_array.fold_left (Lazy.force base_name_array) Bsb_file_groups.empty
+          Ext_array.fold_left (Lazy.force basename_array) Bsb_file_groups.empty
             (fun origin x ->
               if
                 (not (Set_string.mem cxt.ignored_dirs x))
@@ -247,12 +149,12 @@ let rec parsing_source_dir_map ({ cwd = dir } as cxt)
                            (Ext_path.simple_convert_node_path_to_os_path x);
                        traverse = true;
                      }
-                     Map_string.empty)
+                     (Bsb_manifest_types.SourceItem.from_string x))
                   origin
               else origin)
       (* readdir parent avoiding scanning twice *)
-      | None, false | Some (False _), _ -> Bsb_file_groups.empty
-      | Some s, _ -> parse_sources cxt s
+      | None, false | Some Recursive_none, _ -> Bsb_file_groups.empty
+      | Some (Recursive_source s), _ -> parse_source cxt s
     in
     (* Do some clean up *)
     (* prune_staled_bs_js_files cxt sources ; *)
@@ -261,75 +163,31 @@ let rec parsing_source_dir_map ({ cwd = dir } as cxt)
         {
           dir;
           sources;
-          resources;
-          public;
+          resources = input.resources;
+          public = input.public;
           is_dev = cxt.is_dev;
           generators = (if has_generators then scanned_generators else []);
         }
       ?globbed_dir:(if !cur_globbed_dirs then Some dir else None)
       children
 
-and parsing_single_source ({ package_kind; is_dev; cwd } as cxt)
-    (x : Ext_json_types.t) : t =
-  match x with
-  | Str { str = dir } -> (
-      match (package_kind, is_dev) with
-      | Dependency _, true -> Bsb_file_groups.empty
-      | Dependency _, false | (Toplevel | Pinned_dependency _), _ ->
-          parsing_source_dir_map
-            {
-              cxt with
-              cwd =
-                Ext_path.concat cwd
-                  (Ext_path.simple_convert_node_path_to_os_path dir);
-            }
-            Map_string.empty)
-  | Obj { map } -> (
-      let current_dir_index =
-        match map.?(Bsb_build_schemas.type_) with
-        | Some (Str { str = "dev" }) -> true
-        | Some _ ->
-            Bsb_exception.manifest_error x {|type field expect "dev" literal |}
-        | None -> is_dev
-      in
-      match (package_kind, current_dir_index) with
-      | Dependency _, true -> Bsb_file_groups.empty
-      | Dependency _, false | (Toplevel | Pinned_dependency _), _ ->
-          let dir =
-            match map.?(Bsb_build_schemas.dir) with
-            | Some (Str { str }) ->
-                if str = Literals.library_file then
-                    Bsb_exception.manifest_error x (Printf.sprintf "dir field should be different from `%s`" Literals.library_file)
-                else
-                Ext_path.simple_convert_node_path_to_os_path str
-            | Some x ->
-                Bsb_exception.manifest_error x "dir expected to be a string"
-            | None ->
-                Bsb_exception.manifest_error x
-                  ("required field :" ^ Bsb_build_schemas.dir ^ " missing")
-          in
-
-          parsing_source_dir_map
-            {
-              cxt with
-              is_dev = current_dir_index;
-              cwd = Ext_path.concat cwd dir;
-            }
-            map)
-  | _ -> Bsb_file_groups.empty
-
-and parsing_arr_sources cxt (file_groups : Ext_json_types.t array) =
-  Ext_array.fold_left file_groups Bsb_file_groups.empty (fun origin x ->
-      Bsb_file_groups.merge (parsing_single_source cxt x) origin)
-
-and parse_sources (cxt : cxt) (sources : Ext_json_types.t) =
-  match sources with
-  | Arr file_groups -> parsing_arr_sources cxt file_groups.content
-  | _ -> parsing_single_source cxt sources
+and parse_source ({ package_kind; is_dev; cwd } as cxt)
+    (x : source) : t =
+    match (package_kind, is_dev) with
+    | Dependency _, true -> Bsb_file_groups.empty
+    | Dependency _, false | (Toplevel | Pinned_dependency _), _ ->
+        parsing_source_dir_map
+          {
+            cxt with
+            cwd =
+              Ext_path.concat cwd
+                (Ext_path.simple_convert_node_path_to_os_path x.dir);
+          }
+          x
 
 let scan ~package_kind ~root ~cut_generators ~(* ~namespace  *)
                                              ignored_dirs x : t =
-  parse_sources
+  parse_source
     {
       ignored_dirs;
       package_kind;
@@ -351,13 +209,13 @@ type walk_cxt = {
   gentype_language : string;
 }
 
-let rec walk_sources (cxt : walk_cxt) (sources : Ext_json_types.t) =
+let rec walk_sources (cxt : walk_cxt) (sources : source list) =
   match sources with
   | Arr { content } ->
       Ext_array.iter content (fun x -> walk_single_source cxt x)
   | x -> walk_single_source cxt x
 
-and walk_single_source cxt (x : Ext_json_types.t) =
+and walk_single_source cxt (x : source) =
   match x with
   | Str { str = dir } ->
       let dir = Ext_path.simple_convert_node_path_to_os_path dir in
@@ -372,7 +230,7 @@ and walk_single_source cxt (x : Ext_json_types.t) =
       | _ -> ())
   | _ -> ()
 
-and walk_source_dir_map (cxt : walk_cxt) sub_dirs_field =
+and walk_source_dir_map (cxt : walk_cxt) subdirs =
   let working_dir = Filename.concat cxt.root cxt.cwd in
   if not (Set_string.mem cxt.ignored_dirs cxt.cwd) then (
     let file_array = Sys.readdir working_dir in
@@ -410,7 +268,7 @@ and walk_source_dir_map (cxt : walk_cxt) sub_dirs_field =
 let clean_re_js root =
   let cwd = Bsb_global_paths.cwd in
   match
-    Bsb_config_parse.parse_json ~per_proj_dir:cwd ~warn_legacy_config:false
+    Bsb_config_parse.parse_json ~per_proj_dir:cwd ~warn_legacy_manifest:false
   with
   | _, _, Obj { map } ->
       let ignored_dirs =

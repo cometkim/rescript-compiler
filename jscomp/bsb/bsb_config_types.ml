@@ -27,43 +27,26 @@ type dependency = {
   package_install_path : string;
 }
 
-type dependencies = dependency list
-type reason_react_jsx = Jsx_v3
-(* string option  *)
+type ppx_spec = {
+  name : string;
+  args : string list;
+  resolved_path : string;
+}
 
-type gentype_config = bool
-type command = string
-type ppx = { name : string; args : string list }
+type dependencies = dependency list
 
 type t = {
-  package_name : string;
-  (* [captial-package] *)
-  namespace : string option;
-  (* CapitalPackage *)
-  external_includes : string list;
-  bsc_flags : string list;
-  ppx_files : ppx list;
-  pp_file : string option;
+  manifest : Bsb_manifest_types.t;
+  manifest_filename : string;
+  manifest_absolute_path : string;
   bs_dependencies : dependencies;
   bs_dev_dependencies : dependencies;
   pinned_dependencies : Set_string.t;
   built_in_dependency : bool;
-  warning : Bsb_warning.t;
-  (*TODO: maybe we should always resolve rescript
-    so that we can calculate correct relative path in
-    [.merlin]
-  *)
-  js_post_build_cmd : string option;
+  ppx_files : ppx_spec list;
+  pp_file : string option;
   package_specs : Bsb_package_specs.t;
   file_groups : Bsb_file_groups.t;
   files_to_install : Bsb_db.module_info Queue.t;
-  reason_react_jsx : reason_react_jsx option;
-  jsx: Bsb_jsx.t;
-  (* whether apply PPX transform or not*)
-  generators : command Map_string.t;
-  cut_generators : bool;
-  (* note when used as a dev mode, we will always ignore it *)
-  gentype_config : gentype_config;
-  uncurried: bool;
-  filename: string;
+  runtime_path : string option;
 }

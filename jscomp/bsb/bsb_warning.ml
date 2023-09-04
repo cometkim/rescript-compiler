@@ -25,8 +25,6 @@
 open Bsb_manifest_types.Warning
 type t = Bsb_manifest_types.Warning.t option
 
-let use_default = None
-
 let prepare_warning_concat ~(beg : bool) s =
   let s = Ext_string.trim s in
   if s = "" then s
@@ -49,29 +47,6 @@ let to_merlin_string x =
 (* see #4406 to avoid user pass A
    Sync up with {!Warnings.report}
 *)
-
-let from_map (m : Ext_json_types.t Map_string.t) =
-  let number_opt = Map_string.find_opt m Bsb_build_schemas.number in
-  let error_opt = Map_string.find_opt m Bsb_build_schemas.error in
-  match (number_opt, error_opt) with
-  | None, None -> None
-  | _, _ ->
-      let error =
-        match error_opt with
-        | Some (True _) -> Warn_error_true
-        | Some (False _) -> Warn_error_false
-        | Some (Str { str }) -> Warn_error_number str
-        | Some x -> Bsb_exception.manifest_error x "expect true/false or string"
-        | None -> Warn_error_false
-        (* To make it less intrusive : warning error has to be enabled*)
-      in
-      let number =
-        match number_opt with
-        | Some (Str { str = number }) -> Some number
-        | None -> None
-        | Some x -> Bsb_exception.manifest_error x "expect a string"
-      in
-      Some { number; error }
 
 let to_bsb_string ~(package_kind : Bsb_package_kind.t) warning =
   match package_kind with

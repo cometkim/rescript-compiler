@@ -36,7 +36,7 @@ let make_world_deps cwd (config : Bsb_config_types.t option)
         *)
         Bsb_config_interpret.deps_from_bsconfig ()
     | Some config ->
-        (config.package_specs, config.jsx, config.uncurried, config.pinned_dependencies)
+        (config.package_specs, config.manifest.jsx, config.manifest.uncurried, config.pinned_dependencies)
   in
   let args =
     if Ext_array.is_empty ninja_args then [| vendor_ninja |]

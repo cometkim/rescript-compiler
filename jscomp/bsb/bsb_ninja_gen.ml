@@ -145,25 +145,28 @@ let output_installation_file cwd_lib_bs namespace files_to_install =
 
 let output_ninja_and_namespace_map ~per_proj_dir ~package_kind
     ({
-       package_name;
-       external_includes;
-       bsc_flags;
-       pp_file;
-       ppx_files;
+       manifest = ({
+         package_name;
+         namespace;
+         external_includes;
+         bsc_flags;
+         pp_flags;
+         ppx_flags;
+         js_post_build_cmd;
+         gentype;
+         reason_react;
+         jsx;
+         uncurried;
+         generators;
+         warning;
+         _;
+       });
        bs_dependencies;
        bs_dev_dependencies;
-       js_post_build_cmd;
        package_specs;
        file_groups = { files = bs_file_groups };
        files_to_install;
        built_in_dependency;
-       reason_react_jsx;
-       jsx;
-       uncurried;
-       generators;
-       namespace;
-       warning;
-       gentype_config;
      } :
       Bsb_config_types.t) : unit =
   let lib_artifacts_dir = Bsb_config.lib_bs in
@@ -204,10 +207,10 @@ let output_ninja_and_namespace_map ~per_proj_dir ~package_kind
       namespace
   in
   let rules : Bsb_ninja_rule.builtin =
-    Bsb_ninja_rule.make_custom_rules ~gentype_config
-      ~has_postbuild:js_post_build_cmd ~pp_file ~has_builtin:built_in_dependency
-      ~reason_react_jsx ~jsx ~uncurried ~package_specs ~namespace ~digest ~package_name
-      ~warnings ~ppx_files ~bsc_flags ~dpkg_incls (* dev dependencies *)
+    Bsb_ninja_rule.make_custom_rules ~gentype_config:gentype
+      ~has_postbuild:js_post_build_cmd ~pp_file:pp_flags ~has_builtin:built_in_dependency
+      ~reason_react ~jsx ~uncurried ~package_specs ~namespace ~digest ~package_name
+      ~warnings ~ppx_files:ppx_flags ~bsc_flags ~dpkg_incls (* dev dependencies *)
       ~lib_incls (* its own libs *)
       ~dev_incls (* its own devs *)
       ~bs_dependencies ~bs_dev_dependencies generators
