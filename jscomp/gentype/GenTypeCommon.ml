@@ -77,6 +77,7 @@ type type_ =
   | Tuple of type_ list
   | TypeVar of string
   | Variant of variant (* ordinary and polymorphic variants *)
+  | ModuleType of string * fields
 
 and fields = field list
 and argType = {aName: string; aType: type_}

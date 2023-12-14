@@ -67,6 +67,12 @@ let rec substitute ~f type0 =
           |> List.map (fun payload ->
                  {payload with t = payload.t |> substitute ~f});
       }
+  | ModuleType (name, fields) ->
+    ModuleType
+      ( name,
+        fields
+        |> List.map (fun field ->
+               {field with type_ = field.type_ |> substitute ~f}) )
 
 let rec free_ type0 : StringSet.t =
   match type0 with
@@ -97,6 +103,11 @@ let rec free_ type0 : StringSet.t =
     payloads
     |> List.fold_left
          (fun s {t} -> StringSet.union s (t |> free_))
+         StringSet.empty
+  | ModuleType (_, fields) ->
+    fields
+    |> List.fold_left
+         (fun s {type_} -> StringSet.union s (type_ |> free_))
          StringSet.empty
 
 and freeOfList_ types =

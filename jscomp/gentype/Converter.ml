@@ -73,6 +73,7 @@ let typeGetInlined ~config ~lookupId ~typeNameIsInterface type0 =
           Variant {variant with payloads = withPayloadConverted}
       in
       normalized
+    | ModuleType _ -> normalized_
   and argTypeToGroupedArg ~visited {aName; aType} =
     let tNormalized = aType |> visit ~visited in
     {aName; aType = tNormalized}

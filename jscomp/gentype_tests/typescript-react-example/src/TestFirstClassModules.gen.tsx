@@ -12,7 +12,7 @@ import type {firstClassModule as FirstClassModules_firstClassModule} from './Fir
 
 import type {record as FirstClassModulesInterface_record} from './FirstClassModulesInterface.gen';
 
-export type firstClassModuleWithTypeEquations<i,o> = { readonly out: (_1:o) => o; readonly Inner: { readonly inn: (_1:i) => i } };
+export type firstClassModuleWithTypeEquations<i,o> = MT;
 
 export const convert: (x:FirstClassModules_firstClassModule) => FirstClassModules_firstClassModule = TestFirstClassModulesBS.convert;
 
@@ -20,4 +20,4 @@ export const convertInterface: (x:FirstClassModulesInterface_firstClassModule) =
 
 export const convertRecord: (x:FirstClassModulesInterface_record) => FirstClassModulesInterface_record = TestFirstClassModulesBS.convertRecord;
 
-export const convertFirstClassModuleWithTypeEquations: <T1,T2>(x:{ readonly out: ((_1:T1) => T1); readonly Inner: { readonly inn: ((_1:T2) => T2) } }) => { readonly out: (_1:T1) => T1; readonly Inner: { readonly inn: (_1:T2) => T2 } } = TestFirstClassModulesBS.convertFirstClassModuleWithTypeEquations;
+export const convertFirstClassModuleWithTypeEquations: <T1,T2>(x:MT) => MT = TestFirstClassModulesBS.convertFirstClassModuleWithTypeEquations;

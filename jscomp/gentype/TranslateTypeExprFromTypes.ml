@@ -425,6 +425,7 @@ and translateTypeExprFromTypes_ ~config ~typeVarsGen ~typeEnv
   | Tpackage (path, ids, types) -> (
     match typeEnv |> TypeEnv.lookupModuleTypeSignature ~path with
     | Some (signature, typeEnv) ->
+      Log_.item "@@@@@@ typeEnv.name: %s\n" (typeEnv |> TypeEnv.toString);
       let typeEquationsTranslation =
         (List.combine ids types [@doesNotRaise])
         |> List.map (fun (x, t) ->
@@ -444,7 +445,7 @@ and translateTypeExprFromTypes_ ~config ~typeVarsGen ~typeEnv
       let typeEnv1 = typeEnv |> TypeEnv.addTypeEquations ~typeEquations in
       let dependenciesFromRecordType, type_ =
         signature.sig_type
-        |> signatureToModuleRuntimeRepresentation ~config ~typeVarsGen
+        |> signatureToModuleTypeRepresentation ~config ~typeVarsGen
              ~typeEnv:typeEnv1
       in
       {
@@ -460,8 +461,8 @@ and translateTypeExprsFromTypes_ ~config ~typeVarsGen ~typeEnv typeExprs :
   typeExprs
   |> List.map (translateTypeExprFromTypes_ ~config ~typeVarsGen ~typeEnv)
 
-and signatureToModuleRuntimeRepresentation ~config ~typeVarsGen ~typeEnv
-    signature =
+and signatureToModuleTypeRepresentation ~config ~typeVarsGen ~typeEnv signature
+    =
   let dependenciesAndFields =
     signature
     |> List.map (fun signatureItem ->
@@ -492,7 +493,7 @@ and signatureToModuleRuntimeRepresentation ~config ~typeVarsGen ~typeEnv
                match moduleDeclaration.md_type with
                | Mty_signature signature ->
                  signature
-                 |> signatureToModuleRuntimeRepresentation ~config ~typeVarsGen
+                 |> signatureToModuleTypeRepresentation ~config ~typeVarsGen
                       ~typeEnv:typeEnv1
                | Mty_ident _ | Mty_functor _ | Mty_alias _ -> ([], unknown)
              in
@@ -515,7 +516,7 @@ and signatureToModuleRuntimeRepresentation ~config ~typeVarsGen ~typeEnv
     let dl, fl = dependenciesAndFields |> List.split in
     (dl |> List.concat, fl |> List.concat)
   in
-  (dependencies, Object (Closed, fields))
+  (dependencies, ModuleType (typeEnv |> TypeEnv.toString, fields))
 
 let translateTypeExprFromTypes ~config ~typeEnv typeExpr =
   let typeVarsGen = GenIdent.createTypeVarsGen () in

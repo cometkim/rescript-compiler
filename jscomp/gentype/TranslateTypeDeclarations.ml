@@ -186,9 +186,21 @@ let traslateDeclarationKind ~config ~loc ~outputFileRelative ~resolver
     let translation =
       coreType |> TranslateCoreType.translateCoreType ~config ~typeEnv
     in
+    Log_.item "@@@@@ translation.type: %s\n"
+      (translation.type_
+      |> EmitType.renderType ~config
+           ~typeNameIsInterface:(fun _ -> false)
+           ~inFunType:false);
     let type_ =
       match (coreType, translation.type_) with
+      | {ctyp_desc = Ttyp_alias (_coreType, name)}, _ ->
+        print_endline ("@@@@@ alias" ^ name);
+        translation.type_
+      | {ctyp_desc = Ttyp_package {pack_type = Mty_ident _}}, _ ->
+        print_endline "@@@@@ package ident";
+        translation.type_
       | {ctyp_desc = Ttyp_variant (rowFields, _, _)}, Variant variant ->
+        print_endline "@@@@@ here?";
         let rowFieldsVariants = rowFields |> TranslateCoreType.processVariant in
         let noPayloads =
           rowFieldsVariants.noPayloads |> List.map (createCase ~poly:true)
@@ -326,6 +338,13 @@ let translateTypeDeclaration ~config ~outputFileRelative ~recursive ~resolver
     |> List.map (fun (coreType, _) -> coreType)
     |> TypeVars.extractFromCoreType
   in
+  if !Debug.translation then
+    Log_.item "%s\n"
+      (match (typ_type.type_kind, typ_manifest) with
+      | Type_record _, _ -> "Record"
+      | Type_abstract, Some _ -> "Abstract Some"
+      | Type_abstract, None -> "Abstract None"
+      | _ -> "Unknown");
   let declarationKind =
     match typ_type.type_kind with
     | Type_record (labelDeclarations, recordRepresentation) ->

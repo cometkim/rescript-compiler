@@ -8,7 +8,7 @@ const FirstClassModulesInterfaceBS: any = FirstClassModulesInterfaceBS__Es6Impor
 
 export type record = { readonly x: number; readonly y: string };
 
-export type firstClassModule = { readonly x: number };
+export type firstClassModule = MT;
 
 export const MT_x: number = FirstClassModulesInterfaceBS.MT.x;
 

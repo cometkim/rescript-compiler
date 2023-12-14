@@ -231,7 +231,8 @@ and translateCoreType_ ~config ~typeVarsGen
           |> List.concat)
       in
       {dependencies; type_})
-  | Ttyp_package {pack_path; pack_fields} -> (
+  | Ttyp_package {pack_txt; pack_path; pack_fields} -> (
+    Log_.item "@@@@@@ %s\n" (pack_txt.txt |> Longident.last);
     match typeEnv |> TypeEnv.lookupModuleTypeSignature ~path:pack_path with
     | Some (signature, typeEnv) ->
       let typeEquationsTranslation =
@@ -252,7 +253,7 @@ and translateCoreType_ ~config ~typeVarsGen
       let typeEnv1 = typeEnv |> TypeEnv.addTypeEquations ~typeEquations in
       let dependenciesFromRecordType, type_ =
         signature.sig_type
-        |> signatureToModuleRuntimeRepresentation ~config ~typeVarsGen
+        |> signatureToModuleTypeRepresentation ~config ~typeVarsGen
              ~typeEnv:typeEnv1
       in
       {

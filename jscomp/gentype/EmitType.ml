@@ -232,6 +232,7 @@ let rec renderType ~(config : Config.t) ?(indent = None) ~typeNameIsInterface
             | true -> " "
             | false -> Indent.break ~indent:indent1)
            ^ "| "))
+  | ModuleType (name, _) -> name
 
 and renderField ~config ~indent ~typeNameIsInterface ~inFunType
     {mutable_; nameJS = lbl; optional; type_; docString} =

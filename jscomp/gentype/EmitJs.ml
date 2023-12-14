@@ -37,6 +37,14 @@ let createExportTypeMap ~config ~file ~fromCmtReadRecursively
         | _ -> annotation
       in
       if !Debug.codeItems then
+        Log_.item
+          (match type_ with
+          | Ident _ -> "ident"
+          | TypeVar _ -> "typevar"
+          | Object _ -> "object"
+          | ModuleType _ -> "module type"
+          | _ -> "other");
+      if !Debug.codeItems then
         Log_.item "Type Map: %s%s%s\n"
           (resolvedTypeName |> ResolvedName.toString)
           (match typeVars = [] with
@@ -557,6 +565,8 @@ let propagateAnnotationToSubTypes ~codeItems (typeMap : CodeItem.exportTypeMap)
       | Variant {inherits; payloads} ->
         inherits |> List.iter visit;
         payloads |> List.iter (fun {t} -> t |> visit)
+      | ModuleType (_, fields) ->
+        fields |> List.iter (fun {type_} -> type_ |> visit)
     in
     type0 |> visit
   in

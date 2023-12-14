@@ -10,7 +10,7 @@
       "ReasonReact": "ReactShim"
     },
     "debug": {
-      "all": false
+      "all": true
     },
     "exportInterfaces": false
   },
