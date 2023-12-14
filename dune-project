@@ -25,7 +25,7 @@
   (cppo
    (= 1.6.9))
   (js_of_ocaml-compiler
-   (= 4.0.0))
+   (= 5.3.0))
   (ounit2
    (= 2.2.6))
   (reanalyze
