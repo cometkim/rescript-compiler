@@ -55,10 +55,6 @@ let apiVersion = "4"
 
 module Js = Js_of_ocaml.Js
 
-let export (field : string) v =
-  Js.Unsafe.set (Js.Unsafe.global) field v
-;;
-
 module Lang = struct
   type t = OCaml | Res
 
@@ -695,14 +691,9 @@ module Export = struct
 end
 
 let () =
-  export "rescript_compiler"
-    (Js.Unsafe.(obj
-                  [|
-                    "api_version",
-                    inject @@ Js.string apiVersion;
-                    "version",
-                    inject @@ Js.string Bs_version.version;
-                    "make",
-                    inject @@ Export.make
-                  |]))
-
+  Js.export "rescript_compiler"
+    (object%js
+      val api_version = apiVersion
+      val version = Bs_version.version
+      method make = Export.make()
+    end)
