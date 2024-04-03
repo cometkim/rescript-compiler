@@ -1,18 +1,17 @@
 #!/usr/bin/env node
 // Copy exes built by dune to platform bin dir
 
-const path = require("path");
-const fs = require("fs");
-const child_process = require("child_process");
-const { duneBinDir } = require("./dune");
-const { absolutePath: platformBinDir } = require("./bin_path");
+import * as path from "node:path";
+import * as fs from "node:fs";
+import { execSync } from "node:child_process";
 
-const ninjaDir = path.join(__dirname, "..", "ninja");
+import { absolutePath as platformBinDir } from "#cli/bin_path.js";
+import { duneBinDir, ninjaDir } from "./lib/paths.js";
 
-if (!fs.existsSync(platformBinDir)) {
-  fs.mkdirSync(platformBinDir);
-}
-
+/**
+ * @param {string} dir
+ * @param {string} exe
+ */
 function copyExe(dir, exe) {
   const ext = process.platform === "win32" ? ".exe" : "";
   const src = path.join(dir, exe + ext);
@@ -26,10 +25,11 @@ function copyExe(dir, exe) {
   fs.copyFileSync(src, dest);
 
   if (process.platform !== "win32") {
-    child_process.execSync(`strip ${dest}`);
+    execSync(`strip ${dest}`);
   }
 }
 
+fs.mkdirSync(platformBinDir, { recursive: true });
 copyExe(duneBinDir, "rescript");
 copyExe(duneBinDir, "bsc");
 copyExe(duneBinDir, "bsb_helper");

@@ -1,0 +1,23 @@
+{
+  // We don't use TypeScript syntax in the codebase.
+  // But we use `tsconfig.json` instead `jsconfig.json` because many IDEs lookup tsconfig.json for project config by default.
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noImplicitAny": true,
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "noEmit": true
+  },
+  "include": [
+    "bsc",
+    "bstracing",
+    "rescript",
+    "lib/**/*",
+    "cli/**/*",
+    "scripts/**/*.js",
+    "jscomp/build_tests/**/*.js"
+  ]
+}

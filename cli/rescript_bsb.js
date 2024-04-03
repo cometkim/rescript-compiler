@@ -1,25 +1,20 @@
-//@ts-check
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as os from "node:os";
+import * as child_process from "node:child_process";
+import { createServer } from "node:http";
 
-const fs = require("fs");
-const path = require("path");
-var os = require("os");
-const child_process = require("child_process");
-const rescript_exe = require("./bin_path").rescript_exe;
+import { rescript_exe } from './bin_path.js';
+
+export {
+  releaseBuild,
+  info,
+  clean,
+  build,
+};
 
 const cwd = process.cwd();
 const lockFileName = path.join(cwd, ".bsb.lock");
-
-/**
- * @typedef {Object} ProjectFiles
- * @property {Array<string>} dirs
- * @property {Array<string>} generated
- */
-
-/**
- * @typedef {Object} WatcherRef
- * @property {string} dir
- * @property {fs.FSWatcher} watcher
- */
 
 /**
  * @type {child_process.ChildProcess | null}
@@ -51,15 +46,19 @@ function acquireBuild(args, options) {
         stdio: "inherit",
         ...options,
       });
-      fs.writeFileSync(lockFileName, ownerProcess.pid.toString(), {
-        encoding: "utf8",
-        flag: "wx",
-        mode: 0o664,
-      });
+      if (ownerProcess.pid) {
+        fs.writeFileSync(lockFileName, ownerProcess.pid.toString(), {
+          encoding: "utf8",
+          flag: "wx",
+          mode: 0o664,
+        });
+      }
     } catch (err) {
-      if (err.code === "EEXIST") {
+      if (err && typeof err === 'object' && 'code' in err && err.code === "EEXIST") {
         console.warn(lockFileName, "already exists, try later");
-      } else console.log(err);
+      } else {
+        console.error(err);
+      }
     }
     return ownerProcess;
   }
@@ -173,6 +172,18 @@ function getProjectFiles(file) {
  * @param {Array<string>} args
  */
 function watch(args) {
+  /**
+  * @typedef {Object} ProjectFiles
+  * @property {Array<string>} dirs
+  * @property {Array<string>} generated
+  */
+
+  /**
+  * @typedef {Object} WatcherRef
+  * @property {string} dir
+  * @property {fs.FSWatcher} watcher
+  */
+
   // All clients of type MiniWebSocket
   /**
    * @type {any[]}
@@ -189,35 +200,35 @@ function watch(args) {
 
   const sourcedirs = path.join("lib", "bs", ".sourcedirs.json");
 
-  var LAST_SUCCESS_BUILD_STAMP = 0;
+  const LAST_SUCCESS_BUILD_STAMP = 0;
 
   let LAST_BUILD_START = 0;
   let LAST_FIRED_EVENT = 0;
   /**
    * @type {[string,string][]}
    */
-  let reasonsToRebuild = [];
+  const reasonsToRebuild = [];
   /**
    * @type {string[]}
    */
-  let watchGenerated = [];
+  const watchGenerated = [];
 
   /**
    * @type {WatcherRef[]}
    * watchers are held so that we close it later
    */
-  let watchers = [];
+  const watchers = [];
 
   const verbose = args.includes("-verbose");
   const dlog = verbose ? console.log : () => {};
 
-  var wsParamIndex = args.indexOf("-ws");
+  const wsParamIndex = args.indexOf("-ws");
   if (wsParamIndex > -1) {
-    var hostAndPortNumber = (args[wsParamIndex + 1] || "").split(":");
+    const hostAndPortNumber = (args[wsParamIndex + 1] || "").split(":");
     /**
      * @type {number}
      */
-    var portNumber;
+    let portNumber;
     if (hostAndPortNumber.length === 1) {
       portNumber = parseInt(hostAndPortNumber[0]);
     } else {
@@ -237,12 +248,12 @@ function watch(args) {
 
   function notifyClients() {
     wsClients = wsClients.filter(x => !x.closed && !x.socket.destroyed);
-    var wsClientsLen = wsClients.length;
+    const wsClientsLen = wsClients.length;
     dlog(`Alive sockets number: ${wsClientsLen}`);
-    var data = '{"LAST_SUCCESS_BUILD_STAMP":' + LAST_SUCCESS_BUILD_STAMP + "}";
+    const data = '{"LAST_SUCCESS_BUILD_STAMP":' + LAST_SUCCESS_BUILD_STAMP + "}";
     for (var i = 0; i < wsClientsLen; ++i) {
       // in reverse order, the last pushed get notified earlier
-      var client = wsClients[wsClientsLen - i - 1];
+      const client = wsClients[wsClientsLen - i - 1];
       if (!client.closed) {
         client.sendText(data);
       }
@@ -252,8 +263,7 @@ function watch(args) {
   function setUpWebSocket() {
     var WebSocket = require("../lib/minisocket.js").MiniWebSocket;
     var id = setInterval(notifyClients, 3000);
-    require("http")
-      .createServer()
+    createServer()
       .on("upgrade", function (req, socket, upgradeHead) {
         dlog("connection opened");
         var ws = new WebSocket(req, socket, upgradeHead);
@@ -396,7 +406,7 @@ Please pick a different one using the \`-ws [host:]port\` flag from bsb.`);
         outputError(s, "ninja: error");
       })
         .once("exit", buildFinishedCallback)
-        .stderr.setEncoding("utf8");
+        .stderr?.setEncoding("utf8");
       // This is important to clean up all
       // previous queued events
       reasonsToRebuild = [];
@@ -509,8 +519,3 @@ function build(args) {
   }
   delegate(["build", ...args]);
 }
-
-exports.releaseBuild = releaseBuild;
-exports.info = info;
-exports.clean = clean;
-exports.build = build;

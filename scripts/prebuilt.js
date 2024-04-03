@@ -1,13 +1,14 @@
 #!/usr/bin/env node
-//@ts-check
 
-const path = require("path");
-const fs = require("fs");
-const assert = require("assert");
+import * as assert from "node:assert";
+import * as path from "node:path";
+import * as fs from "node:fs/promises";
+import packageJson from "rescript/package_meta";
 
-const package_config = require(path.join(__dirname, "..", "package.json"));
-const bsVersion = fs.readFileSync(
-  path.join(__dirname, "..", "jscomp", "common", "bs_version.ml"),
+import { compilerDir, libDir, projectDir } from "./lib/paths.js"
+
+const bsVersion = await fs.readFile(
+  path.join(compilerDir, "common", "bs_version.ml"),
   "utf-8"
 );
 
@@ -35,48 +36,37 @@ function verifyVersion(bsVersion, version) {
 }
 
 /**
- *
  * @param {string} src
- * @param {(file:string)=>boolean} filter
+ * @param {(file: string) => boolean} filter
  * @param {string} dest
  */
-function installDirBy(src, dest, filter) {
-  fs.readdir(src, function (err, files) {
-    if (err === null) {
-      files.forEach(function (file) {
-        if (filter(file)) {
-          var x = path.join(src, file);
-          var y = path.join(dest, file);
-          // console.log(x, '----->', y )
-          fs.copyFile(x, y, err => assert.equal(err, null));
-        }
-      });
-    } else {
-      throw err;
+async function installDirBy(src, dest, filter) {
+  const files = await fs.readdir(src);
+  for (const file of files) {
+    if (filter(file)) {
+      const x = path.join(src, file);
+      const y = path.join(dest, file);
+      // console.log(x, '----->', y )
+      await fs.copyFile(x, y);
     }
-  });
+  }
 }
 
-function populateLibDir() {
-  const root_dir = path.join(__dirname, "..");
-  const lib_dir = path.join(root_dir, "lib");
-  const jscomp_dir = path.join(root_dir, "jscomp");
-  const runtime_dir = path.join(jscomp_dir, "runtime");
-  const others_dir = path.join(jscomp_dir, "others");
-  const ocaml_dir = path.join(lib_dir, "ocaml");
-  const stdlib_dir = path.join(jscomp_dir, "stdlib-406");
+async function populateLibDir() {
+  const runtime_dir = path.join(compilerDir, "runtime");
+  const others_dir = path.join(compilerDir, "others");
+  const ocaml_dir = path.join(libDir, "ocaml");
+  const stdlib_dir = path.join(compilerDir, "stdlib-406");
 
-  if (!fs.existsSync(ocaml_dir)) {
-    fs.mkdirSync(ocaml_dir);
-  }
+  await fs.mkdir(ocaml_dir, { recursive: true });
 
-  installDirBy(runtime_dir, ocaml_dir, function (file) {
-    var y = path.parse(file);
+  await installDirBy(runtime_dir, ocaml_dir, (file) => {
+    const y = path.parse(file);
     return y.name === "js";
   });
 
   // for merlin or other IDE
-  var installed_suffixes = [
+  const installed_suffixes = [
     ".ml",
     ".mli",
     ".res",
@@ -86,19 +76,19 @@ function populateLibDir() {
     ".cmt",
     ".cmti",
   ];
-  installDirBy(others_dir, ocaml_dir, file => {
-    var y = path.parse(file);
+  await installDirBy(others_dir, ocaml_dir, file => {
+    const y = path.parse(file);
     if (y.ext === ".cmi") {
       return !y.base.match(/Belt_internal/i);
     }
     return installed_suffixes.includes(y.ext) && !y.name.endsWith(".cppo");
   });
-  installDirBy(stdlib_dir, ocaml_dir, file => {
-    var y = path.parse(file);
+  await installDirBy(stdlib_dir, ocaml_dir, file => {
+    const y = path.parse(file);
     return installed_suffixes.includes(y.ext);
   });
 }
 
-assert(verifyVersion(bsVersion, package_config.version));
+assert.ok(verifyVersion(bsVersion, packageJson.version));
 
-populateLibDir();
+await populateLibDir();

@@ -1,32 +1,37 @@
-//@ts-check
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+import puppeteer from "puppeteer";
 
-const fs = require("fs");
-const path = require("path");
-const { execSync } = require("child_process");
-const puppeteer = require("puppeteer");
+import { compilerDir } from "./lib/paths.js";
+import { exec } from "./lib/exec_util.js";
 
-const jscompDir = path.join(__dirname, "..", "jscomp");
-const keywordsFile = path.join(jscompDir, "keywords.list");
-const reservedMap = path.join(jscompDir, "ext", "js_reserved_map.ml");
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const keywordsFile = path.join(compilerDir, "keywords.list");
+const reservedMap = path.join(compilerDir, "ext", "js_reserved_map.ml");
 
-(async function () {
-  const browser = await puppeteer.launch();
-  const page = await browser.newPage();
+const browser = await puppeteer.launch();
+const page = await browser.newPage();
+
+try {
   /**
-   * @type string[]
-   */
+  * @type string[]
+  */
   const result = await page.evaluate(`Object.getOwnPropertyNames(window)`);
-  fs.writeFileSync(
+
+  await fs.writeFile(
     keywordsFile,
     result
       .filter(x => /^[A-Z]/.test(x))
       .sort()
       .join("\n"),
-    "utf8"
+    "utf8",
   );
-  await browser.close();
 
-  execSync(`ocaml build_reserved.ml ${keywordsFile} ${reservedMap}`, {
-    cwd: __dirname,
-  });
-})();
+} finally {
+  await browser.close();
+}
+
+await exec("ocaml", ["build_reserved.ml", keywordsFile, reservedMap], {
+  cwd: __dirname,
+});

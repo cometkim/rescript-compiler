@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-//@ts-check
-"use strict";
 
 /**
  * This script is supposed to be running in project root directory
@@ -8,15 +6,16 @@
  * and its content are file/directories with regard to project root
  */
 
-var bsc_exe = require("./scripts/bin_path").bsc_exe;
-var rescript_exe = require("./scripts/bin_path").rescript_exe;
-var bsb = require("./scripts/rescript_bsb");
+import { isatty } from "node:tty";
+import packageJson from "rescript/package_meta";
+import { bsc_exe, rescript_exe } from "./cli/bin_path.js";
+import * as bsb from "./cli/rescript_bsb.js";
 
-var cwd = process.cwd();
+const cwd = process.cwd();
 process.env.BSB_PROJECT_ROOT = cwd;
 
 if (process.env.NINJA_ANSI_FORCED === undefined) {
-  if (require("tty").isatty(1)) {
+  if (isatty(1)) {
     process.env.NINJA_ANSI_FORCED = "1";
   }
 } else {
@@ -45,6 +44,9 @@ Run \`rescript <subcommand> -h\` for subcommand help. Examples:
   rescript build -h
   rescript format -h`;
 
+/**
+ * @param {unknown} err
+ */
 function onUncaughtException(err) {
   console.error("Uncaught Exception", err);
   bsb.releaseBuild();
@@ -80,7 +82,7 @@ if (helpArgIndex !== -1 && (firstPositionalArgIndex === -1 || helpArgIndex <= fi
   console.log(helpMessage);
 
 } else if (argPatterns.version.includes(args[0])) {
-  console.log(require("./package.json").version);
+  console.log(packageJson.version);
 
 } else if (firstPositionalArgIndex !== -1) {
   const subcmd = args[firstPositionalArgIndex];

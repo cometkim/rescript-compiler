@@ -1,4 +1,9 @@
-//@ts-check
+export {
+  bad_arg,
+  parse_exn,
+  ArgError,
+};
+
 class StringBuilder {
   constructor() {
     this.val = "";
@@ -13,6 +18,7 @@ class StringBuilder {
     return this;
   }
 }
+
 class ArgError extends Error {}
 
 /**
@@ -24,12 +30,13 @@ function bad_arg(s) {
 }
 
 /**
- * @typedef {{val : string}} stringref
- * @typedef {{val : boolean}} boolref
- * @typedef {{kind:"Unit_call",data : ()=>void } | {kind : "Unit_set", data : boolref}} unit_action
- * @typedef {{kind:"String_call",data:(s : string)=>void} | {kind : "String_set",data: stringref}} string_action
- * @typedef {{kind:"Unit",data : unit_action } | {kind:"String", data: string_action}} action
- * @typedef {Array<[string,action,string]>} specs
+ * @typedef {{ val: string }} stringref
+ * @typedef {{ val: boolean }} boolref
+ * @typedef {{ kind: "Unit_call", data: () => void } | { kind: "Unit_set", data: boolref }} unit_action
+ * @typedef {{ kind: "String_call", data: (s: string) => void } | { kind: "String_set", data: stringref }} string_action
+ * @typedef {{ kind: "Unit", data: unit_action } | { kind: "String", data: string_action }} action
+ * @typedef {Array<[string, action, string]>} specs
+ *
  * @param {StringBuilder} b
  * @param {string} usage
  * @param {specs} specs
@@ -40,7 +47,7 @@ function usage_b(b, usage, specs) {
     return;
   }
   b.add(`\nOptions:\n`);
-  var max_col = 0;
+  let max_col = 0;
   for (let [key] of specs) {
     if (key.length > max_col) {
       max_col = key.length;
@@ -73,15 +80,16 @@ function usage_b(b, usage, specs) {
 }
 
 /**
- * @typedef { {kind : "Unknown"; data:string} | {kind:"Missing";data:string}} error
+ * @typedef {{ kind: "Unknown", data: string } | { kind: "Missing", data: string }} error
+ *
  * @param {string} usage
  * @param {error} error
  * @param {specs} specs
  */
 function stop_raise(usage, error, specs) {
-  var b = new StringBuilder();
+  const b = new StringBuilder();
   switch (error.kind) {
-    case "Unknown":
+    case "Unknown": {
       if (["-help", "--help", "-h"].includes(error.data)) {
         usage_b(b, usage, specs);
         process.stdout.write(b.val);
@@ -89,19 +97,20 @@ function stop_raise(usage, error, specs) {
       } else {
         b.add(`Unknown option "${error.data}".\n'`);
       }
-    case "Missing":
+    }
+    case "Missing": {
       b.add(`Option "${error.data}" needs an argument.\n'`);
+    }
   }
   usage_b(b, usage, specs);
   bad_arg(b.val);
 }
 
 /**
- *
  * @param {string} usage
  * @param {Array<string>} argv
  * @param {specs} specs
- * @param {(args:Array<string>)=>void} annofun
+ * @param {(args: Array<string>) => void} annofun
  * @param {number} start
  * @param {number} finish
  */
@@ -112,15 +121,15 @@ function parse_exn(
   annofun,
   start = 0,
   // first 3 are [node, rescript, subcommand]
-  finish = argv.length
+  finish = argv.length,
 ) {
-  var current = start;
-  var list = [];
+  const list = [];
+  let current = start;
   while (current < finish) {
-    let s = argv[current];
+    const s = argv[current];
     ++current;
     if (s !== "" && s[0] === "-") {
-      var out = specs.find(([flag]) => flag === s);
+      const out = specs.find(([flag]) => flag === s);
       if (out !== undefined) {
         let [_, action] = out;
         switch (action.kind) {
@@ -135,7 +144,6 @@ function parse_exn(
             }
             break;
           case "String":
-            // switch(action.data.kind)
             if (current >= finish) {
               stop_raise(usage, { kind: "Missing", data: s }, specs);
             } else {
@@ -161,6 +169,3 @@ function parse_exn(
   }
   annofun(list);
 }
-exports.bad_arg = bad_arg;
-exports.parse_exn = parse_exn;
-exports.ArgError = ArgError;

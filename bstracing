@@ -1,16 +1,13 @@
 #!/usr/bin/env node
-"use strict";
-//@ts-check
 
-const fs = require("fs");
-const readline = require("readline");
-const path = require("path");
+import * as fs from "node:fs";
+import * as readline from "node:readline";
+import * as path from "node:path";
 
 /**
- *
  * @param {string} file
- * @param {(line:string)=>void} lineCb
- * @param {()=>void} finish
+ * @param {(line: string) => void} lineCb
+ * @param {() => void} finish
  */
 function processEntry(file, lineCb, finish) {
   let input = fs.createReadStream(file);
@@ -32,7 +29,6 @@ function processEntry(file, lineCb, finish) {
 
 class Interval {
   /**
-   *
    * @param {number} start
    * @param {number} end
    */
@@ -53,8 +49,8 @@ class Threads {
      */
     this.workers = [];
   }
+
   /**
-   *
    * @param {{start : number; end : number}} target
    */
   alloc(target) {
@@ -69,12 +65,10 @@ class Threads {
   }
 }
 /**
- *
  * @param {Map<string,Interval>} map
  * @param {string} key
  * @param {Interval} def
- *
- * */
+ */
 function setDefault(map, key, def) {
   if (map.has(key)) {
     return map.get(key);
@@ -121,7 +115,7 @@ const colors = [
   "cq_build_attempt_failed",
 ];
 
-let allocated = new Map();
+const allocated = new Map();
 
 function getColorName(obj, cat) {
   obj.cat = cat;
@@ -134,8 +128,8 @@ function getColorName(obj, cat) {
   obj.cname = colors[i % colors.length];
   return;
 }
+
 /**
- *
  * @param {Interval} target
  */
 function category(target, obj) {
@@ -169,7 +163,7 @@ function readIntervals(file, showAll, outputFile) {
   /**
    * @type {Map<string,Interval>}
    */
-  let targets = new Map();
+  const targets = new Map();
   let offset = 0;
   processEntry(
     file,
@@ -221,12 +215,14 @@ function readIntervals(file, showAll, outputFile) {
     }
   );
 }
-let logName = ".ninja_log";
+
+const logName = ".ninja_log";
 
 /**
  * @type {string}
  */
-var file;
+let file;
+
 /**
  *
  * @param ps {string[]}
@@ -246,8 +242,8 @@ function tryLocation(ps) {
 }
 
 let showAll = false;
-let curDate = new Date();
-let outputFile = `tracing_${curDate.getHours()}_${curDate.getMinutes()}_${curDate.getSeconds()}.json`;
+const curDate = new Date();
+const outputFile = `tracing_${curDate.getHours()}_${curDate.getMinutes()}_${curDate.getSeconds()}.json`;
 
 {
   let index = process.argv.indexOf(`-C`);

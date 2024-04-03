@@ -1,55 +1,60 @@
 #!/usr/bin/env node
-//@ts-check
 
-var os = require("os");
-var fs = require("fs");
-var path = require("path");
-var cp = require("child_process");
-var semver = require("semver");
+import * as assert from "node:assert";
+import * as os from "node:os";
+import * as fs from "node:fs/promises";
+import { existsSync } from "node:fs";
+import * as path from "node:path";
+import * as cp from "node:child_process";
+import { fileURLToPath } from "node:url";
 
-var jscompDir = path.join(__dirname, "..", "jscomp");
-var runtimeDir = path.join(jscompDir, "runtime");
-var othersDir = path.join(jscompDir, "others");
-var testDir = path.join(jscompDir, "test");
+import * as binPath from "#cli/bin_path.js";
 
-var jsDir = path.join(__dirname, "..", "lib", "js");
+import { exec } from "./lib/exec_util.js";
+import {
+  compilerDir,
+  compilerTestDir,
+  commonjsLibDir,
+  libDir,
+  projectDir,
+} from "./lib/paths.js";
 
-var runtimeFiles = fs.readdirSync(runtimeDir, "ascii");
-var runtimeMlFiles = runtimeFiles.filter(
+export {
+  vendorNinjaPath,
+  updateDev,
+  updateRelease,
+};
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const runtimeDir = path.join(compilerDir, "runtime");
+const othersDir = path.join(compilerDir, "others");
+
+const runtimeFiles = await fs.readdir(runtimeDir, "ascii");
+const runtimeMlFiles = runtimeFiles.filter(
   x =>
     !x.startsWith("bs_stdlib_mini") &&
     (x.endsWith(".ml") || x.endsWith(".res")) &&
     x !== "js.ml"
 );
-var runtimeMliFiles = runtimeFiles.filter(
+const runtimeMliFiles = runtimeFiles.filter(
   x =>
     !x.startsWith("bs_stdlib_mini") &&
     (x.endsWith(".mli") || x.endsWith(".resi")) &&
     x !== "js.mli"
 );
-var runtimeSourceFiles = runtimeMlFiles.concat(runtimeMliFiles);
-var runtimeJsFiles = [...new Set(runtimeSourceFiles.map(baseName))];
+const runtimeSourceFiles = runtimeMlFiles.concat(runtimeMliFiles);
+const runtimeJsFiles = [...new Set(runtimeSourceFiles.map(baseName))];
 
-var commonBsFlags = `-no-keep-locs -no-alias-deps -bs-no-version-header -bs-no-check-div-by-zero -nostdlib `;
-var js_package = pseudoTarget("js_pkg");
-var runtimeTarget = pseudoTarget("runtime");
-var othersTarget = pseudoTarget("others");
-var stdlibTarget = pseudoTarget("$stdlib");
-var my_target = require("./bin_path").absolutePath;
-var bsc_exe = require("./bin_path").bsc_exe;
+const commonBsFlags = `-no-keep-locs -no-alias-deps -bs-no-version-header -bs-no-check-div-by-zero -nostdlib `;
+const js_package = pseudoTarget("js_pkg");
+const runtimeTarget = pseudoTarget("runtime");
+const othersTarget = pseudoTarget("others");
+const stdlibTarget = pseudoTarget("$stdlib");
+const my_target = binPath.absolutePath;
+const bsc_exe = binPath.bsc_exe;
+const vendorNinjaPath = binPath.ninja_exe;
 
-var vendorNinjaPath = require("./bin_path").ninja_exe;
-
-// Let's enforce a Node version >= 16 to make sure M1 users don't trip up on
-// cryptic issues caused by mismatching assembly architectures Node 16 ships
-// with a native arm64 binary, and will set process.arch to "arm64" (instead of
-// Rosetta emulated "x86")
-if (semver.lt(process.version, "16.0.0")) {
-  console.error("Requires node version 16 or above... Abort.");
-  process.exit(1);
-}
-
-exports.vendorNinjaPath = vendorNinjaPath;
 /**
  * By default we use vendored,
  * we produce two ninja files which won't overlap
@@ -89,17 +94,16 @@ exports.vendorNinjaPath = vendorNinjaPath;
 /**
  * @type {string}
  */
-var versionString = undefined;
+let versionString = undefined;
 
 /**
- *
  * @returns {string}
  */
-var getVersionString = () => {
+function getVersionString() {
   if (versionString === undefined) {
-    var searcher = "version";
+    const searcher = "version";
     try {
-      var output = cp.execSync(`ocamldep.opt -version`, {
+      const output = cp.execSync(`ocamldep.opt -version`, {
         encoding: "ascii",
       });
       versionString = output
@@ -116,7 +120,6 @@ Make sure you have the OCaml compiler available in your path.`);
 };
 
 /**
- *
  * @param {string} ninjaCwd
  */
 function ruleCC(ninjaCwd) {
@@ -130,56 +133,36 @@ rule cc_cmi
 `;
 }
 /**
- *
  * @param {string} name
  * @param {string} content
  */
-function writeFileAscii(name, content) {
-  fs.writeFile(name, content, "ascii", throwIfError);
+async function writeFileAscii(name, content) {
+  await fs.writeFile(name, content, "ascii");
 }
 
 /**
- *
- * @param {string} name
- * @param {string} content
- */
-function writeFileSync(name, content) {
-  return fs.writeFileSync(name, content, "ascii");
-}
-/**
- *
- * @param {NodeJS.ErrnoException} err
- */
-function throwIfError(err) {
-  if (err !== null) {
-    throw err;
-  }
-}
-/**
- *
- * @typedef { {kind : "file" , name : string} | {kind : "pseudo" , name : string}} Target
- * @typedef {{key : string, value : string}} Override
- * @typedef { Target[]} Targets
- * @typedef {Map<string,TargetSet>} DepsMap
+ * @typedef {{ kind: "file", name: string } | { kind: "pseudo", name: string }} Target
+ * @typedef {{ key: string, value: string }} Override
+ * @typedef {Target[]} Targets
+ * @typedef {Map<string, TargetSet>} DepsMap
  */
 
 class TargetSet {
   /**
-   *
-   * @param {Targets} xs
+   * @param {Targets} [xs=[]]
    */
   constructor(xs = []) {
     this.data = xs;
   }
+
   /**
-   *
    * @param {Target} x
    */
   add(x) {
-    var data = this.data;
-    var found = false;
-    for (var i = 0; i < data.length; ++i) {
-      var cur = data[i];
+    const data = this.data;
+    let found = false;
+    for (let i = 0; i < data.length; ++i) {
+      const cur = data[i];
       if (cur.kind === x.kind && cur.name === x.name) {
         found = true;
         break;
@@ -190,15 +173,15 @@ class TargetSet {
     }
     return this;
   }
+
   /**
    * @returns {Targets} a copy
-   *
    */
   toSortedArray() {
-    var newData = this.data.concat();
+    const newData = this.data.slice();
     newData.sort((x, y) => {
-      var kindx = x.kind;
-      var kindy = y.kind;
+      const kindx = x.kind;
+      const kindy = y.kind;
       if (kindx > kindy) {
         return 1;
       } else if (kindx < kindy) {
@@ -215,9 +198,9 @@ class TargetSet {
     });
     return newData;
   }
+
   /**
-   *
-   * @param {(item:Target)=>void} callback
+   * @param {(item: Target) => void} callback
    */
   forEach(callback) {
     this.data.forEach(callback);
@@ -225,22 +208,20 @@ class TargetSet {
 }
 
 /**
- *
  * @param {string} target
  * @param {string} dependency
  * @param {DepsMap} depsMap
  */
 function updateDepsKVByFile(target, dependency, depsMap) {
-  var singleTon = fileTarget(dependency);
+  const singleton = fileTarget(dependency);
   if (depsMap.has(target)) {
-    depsMap.get(target).add(singleTon);
+    depsMap.get(target).add(singleton);
   } else {
-    depsMap.set(target, new TargetSet([singleTon]));
+    depsMap.set(target, new TargetSet([singleton]));
   }
 }
 
 /**
- *
  * @param {string} s
  */
 function uncapitalize(s) {
@@ -249,14 +230,14 @@ function uncapitalize(s) {
   }
   return s[0].toLowerCase() + s.slice(1);
 }
+
 /**
- *
  * @param {string} target
  * @param {string[]} dependencies
  * @param {DepsMap} depsMap
  */
 function updateDepsKVsByFile(target, dependencies, depsMap) {
-  var targets = fileTargets(dependencies);
+  const targets = fileTargets(dependencies);
   if (depsMap.has(target)) {
     var s = depsMap.get(target);
     for (var i = 0; i < targets.length; ++i) {
@@ -268,18 +249,17 @@ function updateDepsKVsByFile(target, dependencies, depsMap) {
 }
 
 /**
- *
  * @param {string} target
  * @param {string[]} modules
  * @param {DepsMap} depsMap
  */
 function updateDepsKVsByModule(target, modules, depsMap) {
   if (depsMap.has(target)) {
-    let s = depsMap.get(target);
-    for (let module of modules) {
-      let filename = uncapitalize(module);
-      let filenameAsCmi = filename + ".cmi";
-      let filenameAsCmj = filename + ".cmj";
+    const s = depsMap.get(target);
+    for (const module of modules) {
+      const filename = uncapitalize(module);
+      const filenameAsCmi = filename + ".cmi";
+      const filenameAsCmj = filename + ".cmj";
       if (target.endsWith(".cmi")) {
         if (depsMap.has(filenameAsCmi) || depsMap.has(filenameAsCmj)) {
           s.add(fileTarget(filenameAsCmi));
@@ -294,8 +274,8 @@ function updateDepsKVsByModule(target, modules, depsMap) {
     }
   }
 }
+
 /**
- *
  * @param {string[]}sources
  * @return {DepsMap}
  */
@@ -303,12 +283,15 @@ function createDepsMapWithTargets(sources) {
   /**
    * @type {DepsMap}
    */
-  let depsMap = new Map();
-  for (let source of sources) {
-    let target = sourceToTarget(source);
+  const depsMap = new Map();
+  for (const source of sources) {
+    const target = sourceToTarget(source);
     depsMap.set(target, new TargetSet([]));
   }
   depsMap.forEach((set, name) => {
+    /**
+     * @type {string}
+     */
     let cmiFile;
     if (
       name.endsWith(".cmj") &&
@@ -321,7 +304,6 @@ function createDepsMapWithTargets(sources) {
 }
 
 /**
- *
  * @param {Target} file
  * @param {string} cwd
  */
@@ -332,11 +314,11 @@ function targetToString(file, cwd) {
     case "pseudo":
       return file.name;
     default:
-      throw Error;
+      throw new Error();
   }
 }
+
 /**
- *
  * @param {Targets} files
  * @param {string} cwd
  *
@@ -345,8 +327,8 @@ function targetToString(file, cwd) {
 function targetsToString(files, cwd) {
   return files.map(x => targetToString(x, cwd)).join(" ");
 }
+
 /**
- *
  * @param {Targets} outputs
  * @param {Targets} inputs
  * @param {Targets} deps
@@ -356,10 +338,9 @@ function targetsToString(files, cwd) {
  * @return {string}
  */
 function ninjaBuild(outputs, inputs, rule, deps, cwd, overrides) {
-  var fileOutputs = targetsToString(outputs, cwd);
-  var fileInputs = targetsToString(inputs, cwd);
-  var stmt = `o ${fileOutputs} : ${rule} ${fileInputs}`;
-  // deps.push(pseudoTarget('../lib/bsc'))
+  const fileOutputs = targetsToString(outputs, cwd);
+  const fileInputs = targetsToString(inputs, cwd);
+  let stmt = `o ${fileOutputs} : ${rule} ${fileInputs}`;
   if (deps.length > 0) {
     var fileDeps = targetsToString(deps, cwd);
     stmt += ` | ${fileDeps}`;
@@ -377,7 +358,6 @@ function ninjaBuild(outputs, inputs, rule, deps, cwd, overrides) {
 }
 
 /**
- *
  * @param {Target} outputs
  * @param {Targets} inputs
  * @param {string} cwd
@@ -387,7 +367,6 @@ function phony(outputs, inputs, cwd) {
 }
 
 /**
- *
  * @param {string | string[]} outputs
  * @param {string | string[]} inputs
  * @param {string | string[]} fileDeps
@@ -405,14 +384,14 @@ function ninjaQuickBuild(
   fileDeps,
   extraDeps
 ) {
-  var os = Array.isArray(outputs)
+  const os = Array.isArray(outputs)
     ? fileTargets(outputs)
     : [fileTarget(outputs)];
-  var is = Array.isArray(inputs) ? fileTargets(inputs) : [fileTarget(inputs)];
-  var ds = Array.isArray(fileDeps)
+  const is = Array.isArray(inputs) ? fileTargets(inputs) : [fileTarget(inputs)];
+  const ds = Array.isArray(fileDeps)
     ? fileTargets(fileDeps)
     : [fileTarget(fileDeps)];
-  var dds = Array.isArray(extraDeps) ? extraDeps : [extraDeps];
+  const dds = Array.isArray(extraDeps) ? extraDeps : [extraDeps];
 
   return ninjaBuild(
     os,
@@ -422,14 +401,14 @@ function ninjaQuickBuild(
     cwd,
     overrides.map(x => {
       return { key: x[0], value: x[1] };
-    })
+    }),
   );
 }
 
 /**
- * @typedef { (string | string []) } Strings
- * @typedef { [string,string]} KV
- * @typedef { [Strings, Strings,  string, string, KV[], Strings, (Target|Targets)] } BuildList
+ * @typedef {string | string[]} Strings
+ * @typedef {[string, string]} KV
+ * @typedef {[Strings, Strings, string, string, KV[], Strings, (Target | Targets)]} BuildList
  * @param {BuildList[]} xs
  * @returns {string}
  */
@@ -440,7 +419,7 @@ function ninjaQuickBuildList(xs) {
 }
 
 /**
- * @typedef { [string,string,string?]} CppoInput
+ * @typedef {[string, string, string?]} CppoInput
  * @param {CppoInput[]} xs
  * @param {string} cwd
  * @returns {string}
@@ -451,7 +430,7 @@ function cppoList(cwd, xs) {
       /**
        * @type {KV[]}
        */
-      var variables;
+      let variables;
       if (x[2]) {
         variables = [["type", `-D ${x[2]}`]];
       } else {
@@ -462,7 +441,6 @@ function cppoList(cwd, xs) {
     .join("\n");
 }
 /**
- *
  * @param {string} cwd
  * @param {string[]} xs
  * @returns {string}
@@ -470,14 +448,13 @@ function cppoList(cwd, xs) {
 function mllList(cwd, xs) {
   return xs
     .map(x => {
-      var output = baseName(x) + ".ml";
+      const output = baseName(x) + ".ml";
       return ninjaQuickBuild(output, x, mllRuleName, cwd, [], [], []);
     })
     .join("\n");
 }
 
 /**
- *
  * @param {string} name
  * @returns {Target}
  */
@@ -486,7 +463,6 @@ function fileTarget(name) {
 }
 
 /**
- *
  * @param {string} name
  * @returns {Target}
  */
@@ -495,7 +471,6 @@ function pseudoTarget(name) {
 }
 
 /**
- *
  * @param {string[]} args
  * @returns {Targets}
  */
@@ -504,7 +479,6 @@ function fileTargets(args) {
 }
 
 /**
- *
  * @param {string[]} outputs
  * @param {string[]} inputs
  * @param {DepsMap} depsMap
@@ -514,11 +488,11 @@ function fileTargets(args) {
  * @param {string} cwd
  */
 function buildStmt(outputs, inputs, rule, depsMap, cwd, overrides, extraDeps) {
-  var os = outputs.map(fileTarget);
-  var is = inputs.map(fileTarget);
-  var deps = new TargetSet();
-  for (var i = 0; i < outputs.length; ++i) {
-    var curDeps = depsMap.get(outputs[i]);
+  const os = outputs.map(fileTarget);
+  const is = inputs.map(fileTarget);
+  const deps = new TargetSet();
+  for (let i = 0; i < outputs.length; ++i) {
+    const curDeps = depsMap.get(outputs[i]);
     if (curDeps !== undefined) {
       curDeps.forEach(x => deps.add(x));
     }
@@ -528,7 +502,6 @@ function buildStmt(outputs, inputs, rule, depsMap, cwd, overrides, extraDeps) {
 }
 
 /**
- *
  * @param {string} x
  */
 function replaceCmj(x) {
@@ -536,7 +509,6 @@ function replaceCmj(x) {
 }
 
 /**
- *
  * @param {string} y
  */
 function sourceToTarget(y) {
@@ -547,149 +519,117 @@ function sourceToTarget(y) {
   }
   return y;
 }
+
 /**
+ * Note `bsdep.exe` does not need post processing and -one-line flag
+ * By default `ocamldep.opt` only list dependencies in its args
  *
  * @param {string[]} files
  * @param {string} dir
  * @param {DepsMap} depsMap
  * @return {Promise<void>}
- * Note `bsdep.exe` does not need post processing and -one-line flag
- * By default `ocamldep.opt` only list dependencies in its args
  */
-function ocamlDepForBscAsync(files, dir, depsMap) {
-  return new Promise((resolve, reject) => {
-    var tmpdir = null;
+async function ocamlDepForBscAsync(files, dir, depsMap) {
+  const tmpdir = await fs.mkdtemp(path.join(os.tmpdir(), "resToMl"));
+  try {
     const mlfiles = []; // convert .res files to temporary .ml files in tmpdir
-    files.forEach(f => {
-      const { name, ext } = path.parse(f);
+    for (const file of files) {
+      const { name, ext } = path.parse(file);
       if (ext === ".res" || ext === ".resi") {
         const mlname = ext === ".resi" ? name + ".mli" : name + ".ml";
-        if (tmpdir == null) {
-          tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "resToMl"));
-        }
         try {
           const mlfile = path.join(tmpdir, mlname);
-          cp.execSync(
-            `${bsc_exe} -dsource -only-parse -bs-no-builtin-ppx ${f} 2>${mlfile}`,
-            {
-              cwd: dir,
-              encoding: "ascii",
-            }
-          );
+          const { stderr } = await exec(bsc_exe, ["-dsource", "-only-parse", "-bs-no-builtin-ppx", file], {
+            cwd: dir,
+            encoding: "ascii",
+          });
+          if (stderr) {
+            await writeFileAscii(mlfile, stderr);
+          }
           mlfiles.push(mlfile);
         } catch (err) {
           console.log(err);
         }
       }
-    });
+    }
+
     const minusI = tmpdir == null ? "" : `-I ${tmpdir}`;
-    cp.exec(
-      `ocamldep.opt -allow-approx -one-line ${minusI} -native ${files.join(
-        " "
-      )} ${mlfiles.join(" ")}`,
+
+    const { stdout } = await exec(
+      "ocamldep.opt",
+      ["-allow-approx", "-one-line", minusI, "-native", ...files, ...mlfiles],
       {
         cwd: dir,
         encoding: "ascii",
       },
-      function (error, stdout, stderr) {
-        if (tmpdir != null) {
-          fs.rmSync(tmpdir, { recursive: true, force: true });
-        }
-        if (error !== null) {
-          return reject(error);
-        } else {
-          const pairs = stdout.split("\n").map(x => x.split(":"));
-          pairs.forEach(x => {
-            var deps;
-            let source = replaceCmj(path.basename(x[0]));
-            if (x[1] !== undefined && (deps = x[1].trim())) {
-              deps = deps.split(" ");
-              updateDepsKVsByFile(
-                source,
-                deps.map(x => replaceCmj(path.basename(x))),
-                depsMap
-              );
-            }
-          });
-          return resolve();
-        }
-      }
     );
-  });
+
+    const pairs = stdout.split("\n").map(x => x.split(":"));
+    for (const pair of pairs) {
+      let deps;
+      const source = replaceCmj(path.basename(pair[0]));
+      if (pair[1] !== undefined && (deps = pair[1].trim())) {
+        deps = deps.split(" ");
+        updateDepsKVsByFile(
+          source,
+          deps.map(x => replaceCmj(path.basename(x))),
+          depsMap,
+        );
+      }
+    }
+  } finally {
+    await fs.rm(tmpdir, { recursive: true, force: true });
+  }
 }
 
 /**
+ * Note `bsdep.exe` does not need post processing and -one-line flag
+ * By default `ocamldep.opt` only list dependencies in its args
  *
  * @param {string[]} files
  * @param {string} dir
  * @param {DepsMap} depsMap
- * @return { Promise<void> []}
- * Note `bsdep.exe` does not need post processing and -one-line flag
- * By default `ocamldep.opt` only list dependencies in its args
+ * @return {Promise<void>}
  */
-function depModulesForBscAsync(files, dir, depsMap) {
-  let ocamlFiles = files.filter(x => x.endsWith(".ml") || x.endsWith(".mli"));
-  let resFiles = files.filter(x => x.endsWith(".res") || x.endsWith(".resi"));
-  /**
-   *
-   * @param {(value:void) =>void} resolve
-   * @param {(value:any)=>void} reject
-   */
-  let cb = (resolve, reject) => {
-    /**
-     * @param {any} error
-     * @param {string} stdout
-     * @param {string} stderr
-     */
-    let fn = function (error, stdout, stderr) {
-      if (error !== null) {
-        return reject(error);
-      } else {
-        var pairs = stdout.split("\n").map(x => x.split(":"));
-        pairs.forEach(x => {
-          var modules;
-          let source = sourceToTarget(x[0].trim());
-          if (x[1] !== undefined && (modules = x[1].trim())) {
-            modules = modules.split(" ");
-            updateDepsKVsByModule(source, modules, depsMap);
-          }
-        });
-        return resolve();
-      }
-    };
-    return fn;
-  };
-  let config = {
-    cwd: dir,
-    encoding: "ascii",
-  };
-  return [
-    new Promise((resolve, reject) => {
-      cp.exec(
-        `${bsc_exe}  -modules -bs-syntax-only ${resFiles.join(
-          " "
-        )} ${ocamlFiles.join(" ")}`,
-        config,
-        cb(resolve, reject)
-      );
-    }),
-  ];
+async function depModulesForBscAsync(files, dir, depsMap) {
+  const resFiles = files.filter(x => x.endsWith(".res") || x.endsWith(".resi"));
+  const ocamlFiles = files.filter(x => x.endsWith(".ml") || x.endsWith(".mli"));
+
+  const { stdout } = await exec(
+    bsc_exe,
+    ["-modules", "-bs-syntax-only", ...resFiles, ...ocamlFiles],
+    {
+      cwd: dir,
+      encoding: "ascii",
+    },
+  );
+
+  const pairs = stdout.split("\n").map(x => x.split(":"));
+  for (const pair of pairs) {
+    let modules;
+    let source = sourceToTarget(pair[0].trim());
+    if (pair[1] !== undefined && (modules = pair[1].trim())) {
+      modules = modules.split(" ");
+      updateDepsKVsByModule(source, modules, depsMap);
+    }
+  }
 }
 
 /**
+ * We make a set to ensure that `sourceFiles` are not duplicated
+ *
  * @typedef {('HAS_ML' | 'HAS_MLI' | 'HAS_BOTH' | 'HAS_RES' | 'HAS_RESI' | 'HAS_BOTH_RES')} FileInfo
  * @param {string[]} sourceFiles
  * @returns {Map<string, FileInfo>}
- * We make a set to ensure that `sourceFiles` are not duplicated
  */
 function collectTarget(sourceFiles) {
   /**
    * @type {Map<string,FileInfo>}
    */
-  var allTargets = new Map();
+  const allTargets = new Map();
   sourceFiles.forEach(x => {
-    var { ext, name } = path.parse(x);
-    var existExt = allTargets.get(name);
+    const { ext, name } = path.parse(x);
+    const existExt = allTargets.get(name);
     if (existExt === undefined) {
       if (ext === ".ml") {
         allTargets.set(name, "HAS_ML");
@@ -732,14 +672,12 @@ function collectTarget(sourceFiles) {
 }
 
 /**
- *
  * @param {Map<string, FileInfo>} allTargets
  * @param {string[]} collIn
  * @returns {string[]} A new copy which is
- *
  */
 function scanFileTargets(allTargets, collIn) {
-  var coll = collIn.concat();
+  const coll = collIn.slice();
   allTargets.forEach((ext, mod) => {
     switch (ext) {
       case "HAS_RESI":
@@ -760,58 +698,52 @@ function scanFileTargets(allTargets, collIn) {
 }
 
 /**
- *
  * @param {DepsMap} depsMap
  * @param {Map<string,string>} allTargets
  * @param {string} cwd
- * @param {Targets} extraDeps
+ * @param {Targets} [extraDeps=[]]
  * @return {string[]}
  */
 function generateNinja(depsMap, allTargets, cwd, extraDeps = []) {
   /**
    * @type {string[]}
    */
-  var build_stmts = [];
+  const build_stmts = [];
   allTargets.forEach((x, mod) => {
-    let ouptput_cmj = mod + ".cmj";
-    let output_cmi = mod + ".cmi";
-    let input_ml = mod + ".ml";
-    let input_mli = mod + ".mli";
-    let input_res = mod + ".res";
-    let input_resi = mod + ".resi";
+    const output_cmj = mod + ".cmj";
+    const output_cmi = mod + ".cmi";
+    const input_ml = mod + ".ml";
+    const input_mli = mod + ".mli";
+    const input_res = mod + ".res";
+    const input_resi = mod + ".resi";
     /**
      * @type {Override[]}
      */
-    var overrides = [];
-    // if (mod.endsWith("Labels")) {
-    //   overrides.push({ key: "bsc_flags", value: "$bsc_flags -nolabels" });
-    // }
-
+    const overrides = [];
     /**
-     *
      * @param {string[]} outputs
      * @param {string[]} inputs
-     *
+     * @param {string} [rule="cc"]
      */
-    let mk = (outputs, inputs, rule = "cc") => {
+    const mk = (outputs, inputs, rule = "cc") => {
       return build_stmts.push(
-        buildStmt(outputs, inputs, rule, depsMap, cwd, overrides, extraDeps)
+        buildStmt(outputs, inputs, rule, depsMap, cwd, overrides, extraDeps),
       );
     };
     switch (x) {
       case "HAS_BOTH":
-        mk([ouptput_cmj], [input_ml], "cc_cmi");
+        mk([output_cmj], [input_ml], "cc_cmi");
         mk([output_cmi], [input_mli]);
         break;
       case "HAS_BOTH_RES":
-        mk([ouptput_cmj], [input_res], "cc_cmi");
+        mk([output_cmj], [input_res], "cc_cmi");
         mk([output_cmi], [input_resi]);
         break;
       case "HAS_RES":
-        mk([output_cmi, ouptput_cmj], [input_res]);
+        mk([output_cmi, output_cmj], [input_res]);
         break;
       case "HAS_ML":
-        mk([output_cmi, ouptput_cmj], [input_ml]);
+        mk([output_cmi, output_cmj], [input_ml]);
         break;
       case "HAS_RESI":
         mk([output_cmi], [input_resi]);
@@ -824,15 +756,14 @@ function generateNinja(depsMap, allTargets, cwd, extraDeps = []) {
   return build_stmts;
 }
 
-var COMPILIER = bsc_exe;
-var BSC_COMPILER = `bsc = ${COMPILIER}`;
+const BSC_COMPILER = `bsc = ${bsc_exe}`;
 
 async function runtimeNinja(devmode = true) {
-  var ninjaCwd = "runtime";
-  var compilerTarget = pseudoTarget("$bsc");
-  var externalDeps = devmode ? [compilerTarget] : [];
-  var ninjaOutput = devmode ? "build.ninja" : "release.ninja";
-  var templateRuntimeRules = `
+  const ninjaCwd = "runtime";
+  const compilerTarget = pseudoTarget("$bsc");
+  const externalDeps = devmode ? [compilerTarget] : [];
+  const ninjaOutput = devmode ? "build.ninja" : "release.ninja";
+  const templateRuntimeRules = `
 bsc_no_open_flags =  ${commonBsFlags} -bs-cross-module-opt -make-runtime  -nopervasives  -unsafe -w +50 -warn-error A
 bsc_flags = $bsc_no_open_flags -open Bs_stdlib_mini
 ${ruleCC(ninjaCwd)}
@@ -860,10 +791,10 @@ ${ninjaQuickBuildList([
   /**
    * @type {DepsMap}
    */
-  var depsMap = new Map();
-  var allTargets = collectTarget([...runtimeMliFiles, ...runtimeMlFiles]);
-  var manualDeps = ["bs_stdlib_mini.cmi", "js.cmj", "js.cmi"];
-  var allFileTargetsInRuntime = scanFileTargets(allTargets, manualDeps);
+  const depsMap = new Map();
+  const allTargets = collectTarget([...runtimeMliFiles, ...runtimeMlFiles]);
+  const manualDeps = ["bs_stdlib_mini.cmi", "js.cmj", "js.cmi"];
+  const allFileTargetsInRuntime = scanFileTargets(allTargets, manualDeps);
   allTargets.forEach((ext, mod) => {
     switch (ext) {
       case "HAS_MLI":
@@ -880,50 +811,45 @@ ${ninjaQuickBuildList([
   });
   // FIXME: in dev mode, it should not rely on reading js file
   // since it may cause a bootstrapping issues
-  try {
-    await Promise.all([
-      runJSCheckAsync(depsMap),
-      ocamlDepForBscAsync(runtimeSourceFiles, runtimeDir, depsMap),
-    ]);
-    var stmts = generateNinja(depsMap, allTargets, ninjaCwd, externalDeps);
-    stmts.push(
-      phony(runtimeTarget, fileTargets(allFileTargetsInRuntime), ninjaCwd)
-    );
-    writeFileAscii(
-      path.join(runtimeDir, ninjaOutput),
-      templateRuntimeRules + stmts.join("\n") + "\n"
-    );
-  } catch (e) {
-    console.log(e);
-  }
+  await Promise.all([
+    runJSCheckAsync(depsMap),
+    ocamlDepForBscAsync(runtimeSourceFiles, runtimeDir, depsMap),
+  ]);
+  const stmts = generateNinja(depsMap, allTargets, ninjaCwd, externalDeps);
+  stmts.push(
+    phony(runtimeTarget, fileTargets(allFileTargetsInRuntime), ninjaCwd)
+  );
+  await writeFileAscii(
+    path.join(runtimeDir, ninjaOutput),
+    templateRuntimeRules + stmts.join("\n") + "\n"
+  );
 }
 
-var cppoRuleName = `cppo`;
-
-var cppoRule = (flags = "") => `
+const cppoRuleName = "cppo";
+const cppoRule = (flags = "") => `
 rule ${cppoRuleName}
     command = cppo -V OCAML:${getVersionString()} ${flags} $type $in -o $out
     generator = true
 `;
 
-var mllRuleName = `mll`;
-var mllRule = `
+const mllRuleName = "mll";
+const mllRule = `
 rule ${mllRuleName}
     command = $ocamllex $in
     generator = true
 `;
 
 async function othersNinja(devmode = true) {
-  var compilerTarget = pseudoTarget("$bsc");
-  var externalDeps = [
+  const compilerTarget = pseudoTarget("$bsc");
+  const externalDeps = [
     compilerTarget,
     fileTarget("belt_internals.cmi"),
     fileTarget("js.cmi"),
   ];
-  var ninjaOutput = devmode ? "build.ninja" : "release.ninja";
-  var ninjaCwd = "others";
+  const ninjaOutput = devmode ? "build.ninja" : "release.ninja";
+  const ninjaCwd = "others";
 
-  var templateOthersRules = `
+  const templateOthersRules = `
 bsc_primitive_flags =  ${commonBsFlags} -bs-cross-module-opt -make-runtime   -nopervasives  -unsafe  -w +50 -warn-error A
 bsc_flags = $bsc_primitive_flags -open Belt_internals
 ${ruleCC(ninjaCwd)}
@@ -957,8 +883,8 @@ ${ninjaQuickBuildList([
   ],
 ])}
 `;
-  var othersDirFiles = fs.readdirSync(othersDir, "ascii");
-  var jsPrefixSourceFiles = othersDirFiles.filter(
+  const othersDirFiles = await fs.readdir(othersDir, "ascii");
+  const jsPrefixSourceFiles = othersDirFiles.filter(
     x =>
       x.startsWith("js") &&
       (x.endsWith(".ml") ||
@@ -970,7 +896,7 @@ ${ninjaQuickBuildList([
       !x.includes("#") &&
       x !== "js.ml"
   );
-  var othersFiles = othersDirFiles.filter(
+  const othersFiles = othersDirFiles.filter(
     x =>
       !x.startsWith("js") &&
       x !== "belt.res" &&
@@ -982,68 +908,67 @@ ${ninjaQuickBuildList([
       !x.includes("#") &&
       !x.includes(".cppo")
   );
-  var jsTargets = collectTarget(jsPrefixSourceFiles);
-  var allJsTargets = scanFileTargets(jsTargets, []);
-  let jsDepsMap = new Map();
-  let depsMap = new Map();
+  const jsTargets = collectTarget(jsPrefixSourceFiles);
+  const allJsTargets = scanFileTargets(jsTargets, []);
+  const jsDepsMap = new Map();
+  const depsMap = new Map();
   await Promise.all([
     ocamlDepForBscAsync(jsPrefixSourceFiles, othersDir, jsDepsMap),
     ocamlDepForBscAsync(othersFiles, othersDir, depsMap),
   ]);
-  var jsOutput = generateNinja(jsDepsMap, jsTargets, ninjaCwd, externalDeps);
+  const jsOutput = generateNinja(jsDepsMap, jsTargets, ninjaCwd, externalDeps);
   jsOutput.push(phony(js_package, fileTargets(allJsTargets), ninjaCwd));
 
   // Note compiling belt.ml still try to read
   // belt_xx.cmi we need enforce the order to
   // avoid data race issues
-  var beltPackage = fileTarget("belt.cmi");
-  var beltTargets = collectTarget(othersFiles);
+  const beltPackage = fileTarget("belt.cmi");
+  const beltTargets = collectTarget(othersFiles);
   depsMap.forEach((s, k) => {
     if (k.startsWith("belt")) {
       s.add(beltPackage);
     }
     s.add(js_package);
   });
-  var allOthersTarget = scanFileTargets(beltTargets, []);
-  var beltOutput = generateNinja(depsMap, beltTargets, ninjaCwd, externalDeps);
+  const allOthersTarget = scanFileTargets(beltTargets, []);
+  const beltOutput = generateNinja(depsMap, beltTargets, ninjaCwd, externalDeps);
   beltOutput.push(phony(othersTarget, fileTargets(allOthersTarget), ninjaCwd));
-  // ninjaBuild([`belt_HashSetString.ml`,])
-  writeFileAscii(
+  await writeFileAscii(
     path.join(othersDir, ninjaOutput),
     templateOthersRules +
       jsOutput.join("\n") +
       "\n" +
       beltOutput.join("\n") +
-      "\n"
+      "\n",
   );
 }
+
 /**
- *
- * @param {boolean} devmode
  * generate build.ninja/release.ninja for stdlib-402
+ *
+ * @param {boolean} [devmode=true]
  */
 async function stdlibNinja(devmode = true) {
-  var stdlibVersion = "stdlib-406";
-  var ninjaCwd = stdlibVersion;
-  var stdlibDir = path.join(jscompDir, stdlibVersion);
-  var compilerTarget = pseudoTarget("$bsc");
-  var externalDeps = [compilerTarget, othersTarget];
-  var ninjaOutput = devmode ? "build.ninja" : "release.ninja";
-  var bsc_flags = "bsc_flags";
+  const stdlibVersion = "stdlib-406";
+  const ninjaCwd = stdlibVersion;
+  const stdlibDir = path.join(compilerDir, stdlibVersion);
+  const compilerTarget = pseudoTarget("$bsc");
+  const externalDeps = [compilerTarget, othersTarget];
+  const ninjaOutput = devmode ? "build.ninja" : "release.ninja";
+  const bsc_flags = "bsc_flags";
   /**
    * @type [string,string][]
    */
-  var bsc_builtin_overrides = [[bsc_flags, `$${bsc_flags} -nopervasives`]];
+  const bsc_builtin_overrides = [[bsc_flags, `$${bsc_flags} -nopervasives`]];
   // It is interesting `-w -a` would generate not great code sometimes
   // deprecations diabled due to string_of_float
-  var warnings = "-w -9-3-106 -warn-error A";
-  var templateStdlibRules = `
+  const warnings = "-w -9-3-106 -warn-error A";
+  const templateStdlibRules = `
 ${bsc_flags} = ${commonBsFlags} -bs-cross-module-opt -make-runtime ${warnings} -I others
 ${ruleCC(ninjaCwd)}
 ${ninjaQuickBuildList([
   // we make it still depends on external
   // to enjoy free ride on dev config for compiler-deps
-
   [
     "pervasives.cmj",
     "pervasives.res",
@@ -1064,17 +989,19 @@ ${ninjaQuickBuildList([
   ],
 ])}
 `;
-  var stdlibDirFiles = fs.readdirSync(stdlibDir, "ascii");
-  var sources = stdlibDirFiles.filter(x => {
+  const stdlibDirFiles = await fs.readdir(stdlibDir, "ascii");
+  const sources = stdlibDirFiles.filter(x => {
     return (
       !x.startsWith("pervasives.") &&
       (x.endsWith(".res") || x.endsWith(".resi"))
     );
   });
-  let depsMap = new Map();
+
+  const depsMap = new Map();
   await ocamlDepForBscAsync(sources, stdlibDir, depsMap);
-  var targets = collectTarget(sources);
-  var allTargets = scanFileTargets(targets, [
+
+  const targets = collectTarget(sources);
+  const allTargets = scanFileTargets(targets, [
     "pervasives.cmi",
     "pervasives.cmj",
   ]);
@@ -1092,27 +1019,26 @@ ${ninjaQuickBuildList([
         break;
     }
   });
-  var output = generateNinja(depsMap, targets, ninjaCwd, externalDeps);
+  const output = generateNinja(depsMap, targets, ninjaCwd, externalDeps);
   output.push(phony(stdlibTarget, fileTargets(allTargets), ninjaCwd));
 
-  writeFileAscii(
+  await writeFileAscii(
     path.join(stdlibDir, ninjaOutput),
     templateStdlibRules + output.join("\n") + "\n"
   );
 }
 
 /**
- *
  * @param {string} text
  */
 function getDeps(text) {
   /**
    * @type {string[]}
    */
-  var deps = [];
+  const deps = [];
   text.replace(
     /(\/\*[\w\W]*?\*\/|\/\/[^\n]*|[.$]r)|\brequire\s*\(\s*["']([^"']*)["']\s*\)/g,
-    function (_, ignore, id) {
+    (_, ignore, id) => {
       if (!ignore) deps.push(id);
       return ""; // TODO: examine the regex
     }
@@ -1121,7 +1047,6 @@ function getDeps(text) {
 }
 
 /**
- *
  * @param {string} x
  * @param {string} newExt
  * @example
@@ -1132,28 +1057,26 @@ function getDeps(text) {
  *
  */
 function replaceExt(x, newExt) {
-  let index = x.lastIndexOf(".");
+  const index = x.lastIndexOf(".");
   if (index < 0) {
     return x;
   }
   return x.slice(0, index) + newExt;
 }
 /**
- *
  * @param {string} x
  */
 function baseName(x) {
-  return x.substr(0, x.indexOf("."));
+  return x.substring(0, x.indexOf("."));
 }
 
 /**
- *
  * @returns {Promise<void>}
  */
 async function testNinja() {
-  var ninjaOutput = "build.ninja";
-  var ninjaCwd = `test`;
-  var templateTestRules = `
+  const ninjaOutput = "build.ninja";
+  const ninjaCwd = `test`;
+  const templateTestRules = `
 bsc_flags = -bs-cross-module-opt -make-runtime-test -bs-package-output commonjs:jscomp/test  -w -3-6-26-27-29-30-32..40-44-45-52-60-9-106+104 -warn-error A  -I runtime -I $stdlib -I others
 ${ruleCC(ninjaCwd)}
 
@@ -1165,8 +1088,8 @@ ${mllList(ninjaCwd, [
   "simple_lexer_test.mll",
 ])}
 `;
-  var testDirFiles = fs.readdirSync(testDir, "ascii");
-  var sources = testDirFiles.filter(x => {
+  const testDirFiles = await fs.readdir(compilerTestDir, "ascii");
+  const sources = testDirFiles.filter(x => {
     return (
       x.endsWith(".resi") ||
       x.endsWith(".res") ||
@@ -1175,10 +1098,11 @@ ${mllList(ninjaCwd, [
     );
   });
 
-  let depsMap = createDepsMapWithTargets(sources);
-  await Promise.all(depModulesForBscAsync(sources, testDir, depsMap));
-  var targets = collectTarget(sources);
-  var output = generateNinja(depsMap, targets, ninjaCwd, [
+  const depsMap = createDepsMapWithTargets(sources);
+  await depModulesForBscAsync(sources, compilerTestDir, depsMap);
+
+  const targets = collectTarget(sources);
+  const output = generateNinja(depsMap, targets, ninjaCwd, [
     runtimeTarget,
     stdlibTarget,
     pseudoTarget("$bsc"),
@@ -1190,50 +1114,49 @@ ${mllList(ninjaCwd, [
       ninjaCwd
     )
   );
-  writeFileAscii(
-    path.join(testDir, ninjaOutput),
+  await writeFileAscii(
+    path.join(compilerTestDir, ninjaOutput),
     templateTestRules + output.join("\n") + "\n"
   );
 }
 
 /**
- *
  * @param {DepsMap} depsMap
+ * @return {Promise<number>}
  */
-function runJSCheckAsync(depsMap) {
-  return new Promise(resolve => {
-    var count = 0;
-    var tasks = runtimeJsFiles.length;
-    var updateTick = () => {
-      count++;
-      if (count === tasks) {
-        resolve(count);
+async function runJSCheckAsync(depsMap) {
+  let count = 0;
+  let skip = false;
+  const tasks = runtimeJsFiles.length;
+  const updateTick = () => {
+    count++;
+    if (count === tasks) {
+      skip = true;
+    }
+  };
+  for (const name of runtimeJsFiles) {
+    if (skip) break;
+
+    const jsFile = path.join(commonjsLibDir, name + ".js");
+    try {
+      const fileContent = await fs.readFile(jsFile, "utf8");
+      const deps = getDeps(fileContent).map(x => path.parse(x).name + ".cmj");
+      const exists = existsSync(path.join(runtimeDir, name + ".mli"));
+      if (exists) {
+        deps.push(name + ".cmi");
       }
-    };
-    runtimeJsFiles.forEach(name => {
-      var jsFile = path.join(jsDir, name + ".js");
-      fs.readFile(jsFile, "utf8", function (err, fileContent) {
-        if (err === null) {
-          var deps = getDeps(fileContent).map(x => path.parse(x).name + ".cmj");
-          fs.exists(path.join(runtimeDir, name + ".mli"), exist => {
-            if (exist) {
-              deps.push(name + ".cmi");
-            }
-            updateDepsKVsByFile(`${name}.cmj`, deps, depsMap);
-            updateTick();
-          });
-        } else {
-          // file non exist or reading error ignore
-          updateTick();
-        }
-      });
-    });
-  });
+      updateDepsKVsByFile(`${name}.cmj`, deps, depsMap);
+      updateTick();
+    } catch {
+      updateTick();
+    }
+  }
+  return count;
 }
 
 function checkEffect() {
-  var jsPaths = runtimeJsFiles.map(x => path.join(jsDir, x + ".js"));
-  var effect = jsPaths
+  const jsPaths = runtimeJsFiles.map(x => path.join(commonjsLibDir, x + ".js"));
+  const effect = jsPaths
     .map(x => {
       return {
         file: x,
@@ -1263,27 +1186,25 @@ function checkEffect() {
       return { file: path.basename(file), effect };
     });
 
-  var black_list = new Set(["caml_lexer.js", "caml_parser.js"]);
+  const black_list = new Set(["caml_lexer.js", "caml_parser.js"]);
 
-  var assert = require("assert");
-  // @ts-ignore
-  assert(
+  assert.ok(
     effect.length === black_list.size &&
-      effect.every(x => black_list.has(x.file))
+      effect.every(x => black_list.has(x.file)),
   );
 
   console.log(effect);
 }
 
-function updateRelease() {
-  runtimeNinja(false);
-  stdlibNinja(false);
-  othersNinja(false);
+async function updateRelease() {
+  await runtimeNinja(false);
+  await stdlibNinja(false);
+  await othersNinja(false);
 }
 
-function updateDev() {
-  writeFileAscii(
-    path.join(jscompDir, "build.ninja"),
+async function updateDev() {
+  await writeFileAscii(
+    path.join(compilerDir, "build.ninja"),
     `
 stdlib = stdlib-406
 ${BSC_COMPILER}
@@ -1295,32 +1216,31 @@ subninja test/build.ninja
 o all: phony runtime others $stdlib test
 `
   );
-  writeFileAscii(
-    path.join(jscompDir, "..", "lib", "build.ninja"),
+  await writeFileAscii(
+    path.join(libDir, "build.ninja"),
     `
 ocamlopt = ocamlopt.opt 
 ext = exe
 INCL= "4.06.1+BS"
 include body.ninja               
-`
+`,
   );
 
-  preprocessorNinjaSync(); // This is needed so that ocamldep makes sense
-  runtimeNinja();
-  stdlibNinja(true);
-  if (fs.existsSync(bsc_exe)) {
-    testNinja();
+  await preprocessorNinja(); // This is needed so that ocamldep makes sense
+
+  await runtimeNinja();
+  await stdlibNinja(true);
+  if (existsSync(bsc_exe)) {
+    await testNinja();
   }
-  othersNinja();
+  await othersNinja();
 }
-exports.updateDev = updateDev;
-exports.updateRelease = updateRelease;
 
-function preprocessorNinjaSync() {
-  var dTypeString = "TYPE_STRING";
-  var dTypeInt = "TYPE_INT";
+async function preprocessorNinja() {
+  const dTypeString = "TYPE_STRING";
+  const dTypeInt = "TYPE_INT";
 
-  var cppoNative = `
+  const cppoNative = `
 ${cppoRule("-n")}
 ${cppoList("others", [
   ["belt_HashSetString.res", "hashset.cppo.res", dTypeString],
@@ -1361,103 +1281,97 @@ rule copy
   command = cp $in $out
   description = $in -> $out    
 `;
-  var cppoNinjaFile = "cppoVendor.ninja";
-  writeFileSync(path.join(jscompDir, cppoNinjaFile), cppoNative);
-  cp.execFileSync(vendorNinjaPath, ["-f", cppoNinjaFile, "--verbose", "-v"], {
-    cwd: jscompDir,
-    stdio: [0, 1, 2],
-    encoding: "utf8",
+  const cppoNinjaFile = "cppoVendor.ninja";
+  await writeFileAscii(path.join(compilerDir, cppoNinjaFile), cppoNative);
+  await exec(vendorNinjaPath, ["-f", cppoNinjaFile, "--verbose", "-v"], {
+    cwd: compilerDir,
+    stdio: "inherit",
   });
 }
 
-function main() {
-  if (require.main === module) {
-    if (process.argv.includes("-check")) {
-      checkEffect();
-    }
+// Main entry
+if (process.argv[1] === __filename) {
+  if (process.argv.includes("-check")) {
+    checkEffect();
+  }
 
-    var subcommand = process.argv[2];
-    switch (subcommand) {
-      case "build":
-        try {
-          cp.execFileSync(vendorNinjaPath, ["all"], {
-            encoding: "utf8",
-            cwd: jscompDir,
-            stdio: [0, 1, 2],
-          });
-        } catch (e) {
-          console.log(e.message);
-          console.log(`please run "./scripts/ninja.js config" first`);
-          process.exit(2);
-        }
-        break;
-      case "clean":
-        try {
-          cp.execFileSync(vendorNinjaPath, ["-t", "clean"], {
-            encoding: "utf8",
-            cwd: jscompDir,
-            stdio: [0, 1],
-          });
-        } catch (e) {}
-        cp.execSync(
-          `git clean -dfx jscomp ${my_target} lib && rm -rf lib/js/*.js && rm -rf lib/es6/*.js`,
-          {
-            encoding: "utf8",
-            cwd: path.join(__dirname, ".."),
-            stdio: [0, 1, 2],
-          }
-        );
-        break;
-      case "config":
-        console.log(`config for the first time may take a while`);
-        updateDev();
-        updateRelease();
+  const subcommand = process.argv[2];
+  switch (subcommand) {
+    case "build":
+      try {
+        await exec(vendorNinjaPath, ["all"], {
+          cwd: compilerDir,
+          stdio: "inherit",
+        });
+      } catch (e) {
+        console.log(e.message);
+        console.log(`please run "./scripts/ninja.js config" first`);
+        process.exit(2);
+      }
+      break;
+    case "clean":
+      try {
+        await exec(vendorNinjaPath, ["-t", "clean"], {
+          cwd: compilerDir,
+          stdio: "inherit",
+        });
+      } catch (e) {}
+      await exec("git", ["clean", "-dfx", "jscomp", my_target, "lib"], {
+        cwd: projectDir,
+        stdio: "inherit",
+      });
+      await exec("rm", ["-rm", "lib/js/*.js", "lib/es6/*.js"], {
+        cwd: projectDir,
+        stdio: "inherit",
+      });
+      break;
+    case "config":
+      console.log(`config for the first time may take a while`);
+      await updateDev();
+      await updateRelease();
 
-        break;
-      case "cleanbuild":
-        console.log(`run cleaning first`);
-        cp.execSync(`node ${__filename} clean`, {
-          cwd: __dirname,
-          stdio: [0, 1, 2],
-        });
-        cp.execSync(`node ${__filename} config`, {
-          cwd: __dirname,
-          stdio: [0, 1, 2],
-        });
-        cp.execSync(`node ${__filename} build`, {
-          cwd: __dirname,
-          stdio: [0, 1, 2],
-        });
-        break;
-      case "help":
-        console.log(`supported subcommands:
+      break;
+    case "cleanbuild":
+      console.log(`run cleaning first`);
+      await exec("node", [__filename, "clean"], {
+        cwd: __dirname,
+        stdio: "inherit",
+      });
+      await exec("node", [__filename, "config"], {
+        cwd: __dirname,
+        stdio: "inherit",
+      });
+      await exec("node", [__filename, "build"], {
+        cwd: __dirname,
+        stdio: "inherit",
+      });
+      break;
+    case "help":
+      console.log(`supported subcommands:
 [exe] config        
 [exe] build
 [exe] cleanbuild
 [exe] help
 [exe] clean
-        `);
-        break;
-      default:
-        if (process.argv.length === 2) {
-          updateDev();
-          updateRelease();
-        } else {
-          var dev = process.argv.includes("-dev");
-          var release = process.argv.includes("-release");
-          var all = process.argv.includes("-all");
-          if (all) {
-            updateDev();
-            updateRelease();
-          } else if (dev) {
-            updateDev();
-          } else if (release) {
-            updateRelease();
-          }
+      `);
+      break;
+    default:
+      if (process.argv.length === 2) {
+        await updateDev();
+        await updateRelease();
+      } else {
+        const dev = process.argv.includes("-dev");
+        const release = process.argv.includes("-release");
+        const all = process.argv.includes("-all");
+        if (all) {
+          await updateDev();
+          await updateRelease();
+        } else if (dev) {
+          await updateDev();
+        } else if (release) {
+          await updateRelease();
         }
-        break;
-    }
+      }
+      break;
   }
 }
-
-main();

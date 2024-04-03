@@ -9,20 +9,21 @@
 // In CI, it is invoked with -check. It then recreates the list and verifies
 // that it has no changes compared to the committed state.
 
-const { spawnSync, execSync } = require("child_process");
-const path = require("path");
-const fs = require("fs");
+import { execSync } from "node:child_process";
+import * as path from "node:path";
+import * as fs from "node:fs";
+
+import { projectDir } from "./lib/paths.js";
+import { execNpmScript } from "./lib/exec_util.js";
 
 const isCheckMode = process.argv.includes("-check");
 
-const rootPath = path.join(__dirname, "..");
-const fileListPath = path.join(rootPath, "packages", "artifacts.txt");
+const fileListPath = path.join(projectDir, "packages", "artifacts.txt");
 
-const output = spawnSync(`npm pack --dry-run`, {
-  cwd: rootPath,
-  encoding: "utf8",
+const { stderr: output } = await execNpmScript("pack", ["--dry-run"], {
+  cwd: projectDir,
   shell: true,
-}).stderr;
+});
 
 let files = output
   .slice(
