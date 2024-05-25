@@ -1,5 +1,7 @@
 module ModuleNameMap = Map.Make (ModuleName)
 
+type mode = Legacy | Dts
+
 type module_ = CommonJS | ESModule
 
 (** Compatibility for `compilerOptions.moduleResolution` in TypeScript projects. *)
