@@ -248,7 +248,7 @@ jobs:
             .opam-env
             D:\cygwin
             D:\.opam
-          key: opam-env-v10-${{ matrix.os }}-${{ hashFiles('dune-project') }}
+          key: opam-env-v1-${{ matrix.os }}-${{ matrix.ocaml_compiler }}-${{ hashFiles('dune-project') }}
 
       - name: Use OCaml ${{matrix.ocaml_compiler}}
         uses: ocaml/setup-ocaml@v3.0.0
@@ -281,7 +281,7 @@ jobs:
             .opam-env
             D:\cygwin
             D:\.opam
-          key: opam-env-v10-${{ matrix.os }}-${{ hashFiles('dune-project') }}
+          key: opam-env-v1-${{ matrix.os }}-${{ matrix.ocaml_compiler }}-${{ hashFiles('dune-project') }}
 
       - name: Use cached OPAM environment
         if: steps.cache-opam-env.outputs.cache-hit == 'true'
@@ -321,8 +321,6 @@ jobs:
             echo "CYGWIN_ROOT=$CYGWIN_ROOT" >> "$GITHUB_ENV"
             echo "CYGWIN_ROOT_BIN=$CYGWIN_ROOT_BIN" >> "$GITHUB_ENV"
             echo "CYGWIN_ROOT_WRAPPERBIN=$CYGWIN_ROOT_WRAPPERBIN" >> "$GITHUB_ENV"
-
-            echo "$CYGWIN_ROOT_WRAPPERBIN" >> "$GITHUB_PATH"
           fi
         shell: bash
 
